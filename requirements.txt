@@ -1,0 +1,25 @@
+# --- training / export ---
+ultralytics
+torch
+torchvision
+
+# --- ONNX toolchain ---
+onnx
+onnxslim
+onnxruntime          # swap for onnxruntime-gpu on CUDA hosts
+
+# --- serving ---
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+prometheus-client
+
+# --- data / eval / misc ---
+numpy
+opencv-python-headless
+pillow
+pyyaml
+matplotlib
+tqdm
+requests

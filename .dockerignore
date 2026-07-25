@@ -1,0 +1,52 @@
+# --- vcs / tooling ---
+.git
+.gitignore
+.github
+.vscode
+.idea
+.claude
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# --- big stuff that must never enter the build context ---
+data/
+datasets/
+runs/
+wandb/
+notebooks/
+bench/
+reports/
+scripts/
+
+# training artifacts: the image only needs the exported graph
+models/*.pt
+models/*.part
+models/*.prep.onnx
+models/*.engine
+!models/.gitkeep
+
+# --- media / scratch ---
+*.mp4
+*.avi
+*.mov
+*.zip
+*.tar
+*.tar.gz
+*.log
+.DS_Store
+
+# --- docs ---
+README.md
+*.md
+!requirements.txt
+Dockerfile
+.dockerignore

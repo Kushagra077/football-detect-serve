@@ -1,0 +1,45 @@
+# claude
+.claude
+
+# personal progress tracking, not a deliverable
+PROGRESS.md
+A1-detection-serving-build-spec.md
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# --- data & training artifacts ---
+data/
+datasets/
+runs/
+wandb/
+*.zip
+*.tar.gz
+
+# --- models: gitignored except the placeholder and the download script ---
+models/*
+!models/.gitkeep
+!models/download_weights.py
+
+# --- reports: keep the committed summaries, drop the noise ---
+reports/figures/*
+!reports/figures/.gitkeep
+reports/dataset.json
+reports/train_metrics.json
+reports/accuracy.*.json
+
+# --- os / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
