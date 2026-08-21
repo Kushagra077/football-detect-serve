@@ -1,0 +1,17 @@
+{
+  "_placeholder": "Overwritten by scripts/eval_map.py. Shape shown for reference.",
+  "backend": null,
+  "weights": null,
+  "split": "val",
+  "num_images": 0,
+  "conf": 0.001,
+  "nms_iou": 0.7,
+  "overall": {
+    "map50": null,
+    "map75": null,
+    "map50_95": null,
+    "mean_precision_50": null,
+    "mean_recall_50": null
+  },
+  "per_class": {}
+}

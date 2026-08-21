@@ -1,0 +1,89 @@
+# Training config for football object detection (players / ball / referee / goalkeeper).
+# Consumed by scripts/train.py, which passes `train` straight to ultralytics.
+
+dataset:
+  # Roboflow-style download handled by scripts/prepare_data.py.
+  # Leave `url` empty and point `path` at an existing YOLO dataset to skip the download.
+  url: ""                      # zip URL of the dataset
+  path: data/football          # dataset root, must contain data.yaml after prepare_data.py
+  data_yaml: data/football/data.yaml
+  expected_classes:            # prepare_data.py fails loudly if data.yaml disagrees
+    0: ball
+    1: goalkeeper
+    2: player
+    3: referee
+
+model:
+  weights: yolov8n.pt          # starting checkpoint
+  task: detect
+
+train:
+  epochs: 100
+  imgsz: 640
+  batch: 16
+  device: 0                    # 0 | 0,1 | cpu
+  workers: 8
+  optimizer: auto
+  lr0: 0.01
+  lrf: 0.01
+  momentum: 0.937
+  weight_decay: 0.0005
+  warmup_epochs: 3.0
+  cos_lr: true
+  patience: 25
+  seed: 0
+  deterministic: true
+  amp: true
+  val: true
+  plots: true
+  project: runs/detect
+  name: football
+  exist_ok: true
+
+  # --- augmentation ---
+  # Small fast-moving ball => keep scale/translate lively, keep flips cheap,
+  # avoid vertical flip (pitch footage is never upside down).
+  hsv_h: 0.015
+  hsv_s: 0.7
+  hsv_v: 0.4
+  degrees: 0.0
+  translate: 0.1
+  scale: 0.5
+  shear: 0.0
+  perspective: 0.0
+  flipud: 0.0
+  fliplr: 0.5
+  mosaic: 1.0
+  mixup: 0.0
+  copy_paste: 0.0
+  close_mosaic: 10             # disable mosaic for the final N epochs
+
+export:
+  onnx_path: models/best.onnx
+  int8_path: models/best.int8.onnx
+  opset: 12
+  dynamic_batch: true
+  simplify: true
+
+parity:
+  # check_parity.py gate thresholds (torch vs onnx on the same inputs)
+  max_abs_diff: 1.0e-3
+  max_mean_diff: 1.0e-4
+  num_samples: 8
+
+quantize:
+  calib_images: 200            # images sampled from the val split for calibration
+  per_channel: true
+  # int8 accuracy gate: mAP50-95 may not drop more than this (absolute)
+  max_map_drop: 0.02
+
+serve:
+  backend: onnx                # torch | onnx
+  weights: models/best.onnx
+  imgsz: 640
+  conf: 0.25
+  iou: 0.45
+  max_det: 300
+  batch:
+    max_batch_size: 8
+    max_wait_ms: 15

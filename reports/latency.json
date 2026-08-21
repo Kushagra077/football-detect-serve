@@ -1,0 +1,12 @@
+{
+  "_placeholder": "Overwritten by scripts/benchmark.py. Shape shown for reference.",
+  "environment": {
+    "platform": null,
+    "processor": null,
+    "python": null,
+    "device": "cpu",
+    "ort_threads": "default"
+  },
+  "settings": { "imgsz": 640, "runs": 50, "warmup": 10 },
+  "results": []
+}
