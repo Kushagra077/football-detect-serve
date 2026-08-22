@@ -19,7 +19,7 @@ env/
 
 # --- data & training artifacts ---
 data/
-datasets/
+dataset/
 soccernet_data/
 runs/
 wandb/
