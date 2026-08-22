@@ -75,9 +75,6 @@ python scripts/eval_map.py --backend onnx --weights models/best.int8.onnx \
 python scripts/benchmark.py --batch-sizes 1 2 4 8
 ```
 
-Colab equivalent: [notebooks/01_train_colab.ipynb](notebooks/01_train_colab.ipynb) — it calls the
-same scripts, so there is no notebook-only code to drift.
-
 ### Gate thresholds
 
 | Gate | Config key | Default |

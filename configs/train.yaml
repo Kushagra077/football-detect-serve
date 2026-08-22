@@ -2,11 +2,10 @@
 # Consumed by scripts/train.py, which passes `train` straight to ultralytics.
 
 dataset:
-  # Roboflow-style download handled by scripts/prepare_data.py.
-  # Leave `url` empty and point `path` at an existing YOLO dataset to skip the download.
-  url: ""                      # zip URL of the dataset
-  path: data/football          # dataset root, must contain data.yaml after prepare_data.py
-  data_yaml: data/football/data.yaml
+  # SoccerNet MOT data converted via scripts/convert_mot_to_yolo.py into dataset/.
+  url: ""                      # zip URL of the dataset (unused; conversion is local)
+  path: dataset                # dataset root, must contain data.yaml
+  data_yaml: dataset/data.yaml
   expected_classes:            # prepare_data.py fails loudly if data.yaml disagrees
     0: ball
     1: goalkeeper

@@ -112,7 +112,7 @@ def average_precision(tp: np.ndarray, conf: np.ndarray, n_gt: int) -> Tuple[floa
     mrec = np.concatenate([[0.0], recall, [1.0]])
     mpre = np.maximum.accumulate(mpre[::-1])[::-1]
 
-    ap = float(np.trapz(np.interp(np.linspace(0, 1, 101), mrec, mpre), np.linspace(0, 1, 101)))
+    ap = float(np.trapezoid(np.interp(np.linspace(0, 1, 101), mrec, mpre), np.linspace(0, 1, 101)))
     return ap, float(precision[-1]), float(recall[-1])
 
 
@@ -198,6 +198,14 @@ def main() -> int:
     ap.add_argument("--report", type=Path, default=ROOT / "reports/accuracy.json")
     ap.add_argument("--compare-to", type=Path, default=None, help="baseline accuracy.json to gate against")
     ap.add_argument("--max-map-drop", type=float, default=None)
+    ap.add_argument(
+        "--remap",
+        default=None,
+        help="comma-separated model_name=dataset_name pairs, e.g. 'person=player'. "
+        "Use when the weights' own classes (e.g. off-the-shelf COCO) differ from the "
+        "dataset's classes: predictions for unmapped model classes are dropped instead "
+        "of silently colliding with the wrong dataset class id.",
+    )
     args = ap.parse_args()
 
     import cv2
@@ -246,6 +254,26 @@ def main() -> int:
     names = backend.class_names or {
         int(k): str(v) for k, v in (cfg["dataset"].get("expected_classes") or {}).items()
     }
+
+    id_remap: Optional[Dict[int, int]] = None
+    if args.remap:
+        gt_names = {int(k): str(v) for k, v in (data_cfg.get("names") or {}).items()}
+        model_name_to_id = {v.strip().lower(): k for k, v in names.items()}
+        gt_name_to_id = {v.strip().lower(): k for k, v in gt_names.items()}
+        id_remap = {}
+        for pair in args.remap.split(","):
+            src, dst = pair.split("=")
+            src, dst = src.strip().lower(), dst.strip().lower()
+            if src not in model_name_to_id:
+                print(f"[fail] --remap: '{src}' is not a class the model predicts", file=sys.stderr)
+                return 2
+            if dst not in gt_name_to_id:
+                print(f"[fail] --remap: '{dst}' is not a class in the dataset", file=sys.stderr)
+                return 2
+            id_remap[model_name_to_id[src]] = gt_name_to_id[dst]
+        names = gt_names
+        print(f"[info] remapping model classes -> dataset classes: {args.remap}")
+
     class_ids = sorted(names)
 
     print(f"[info] backend={backend.name} weights={weights.name} images={len(image_paths):,}")
@@ -268,11 +296,16 @@ def main() -> int:
         for path, img, dets in zip(valid, imgs, batched):
             h, w = img.shape[:2]
             gt_boxes, gt_classes = load_ground_truth(path, w, h)
+            if id_remap is not None:
+                dets = [d for d in dets if d.class_id in id_remap]
+                det_classes = np.array([id_remap[d.class_id] for d in dets], np.int64)
+            else:
+                det_classes = np.array([d.class_id for d in dets], np.int64)
             records.append(
                 {
                     "det_boxes": np.array([[d.x1, d.y1, d.x2, d.y2] for d in dets], np.float32).reshape(-1, 4),
                     "det_scores": np.array([d.score for d in dets], np.float32),
-                    "det_classes": np.array([d.class_id for d in dets], np.int64),
+                    "det_classes": det_classes,
                     "gt_boxes": gt_boxes,
                     "gt_classes": gt_classes,
                 }

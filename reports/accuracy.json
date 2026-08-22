@@ -1,17 +1,63 @@
 {
-  "_placeholder": "Overwritten by scripts/eval_map.py. Shape shown for reference.",
-  "backend": null,
-  "weights": null,
+  "backend": "torch",
+  "weights": "models/yolo26n.pt",
   "split": "val",
-  "num_images": 0,
+  "num_images": 8250,
   "conf": 0.001,
   "nms_iou": 0.7,
+  "eval_seconds": 164.96,
   "overall": {
-    "map50": null,
-    "map75": null,
-    "map50_95": null,
-    "mean_precision_50": null,
-    "mean_recall_50": null
+    "map50": 0.0,
+    "map75": 0.0,
+    "map50_95": 0.0,
+    "mean_precision_50": 0.0,
+    "mean_recall_50": 0.0
   },
-  "per_class": {}
+  "per_class": {
+    "ball": {
+      "instances": 7865,
+      "predictions": 0,
+      "precision_50": 0.0,
+      "recall_50": 0.0,
+      "ap50": 0.0,
+      "ap75": 0.0,
+      "ap50_95": 0.0
+    },
+    "goalkeeper": {
+      "instances": 3824,
+      "predictions": 0,
+      "precision_50": 0.0,
+      "recall_50": 0.0,
+      "ap50": 0.0,
+      "ap75": 0.0,
+      "ap50_95": 0.0
+    },
+    "player": {
+      "instances": 116862,
+      "predictions": 188612,
+      "precision_50": 0.0,
+      "recall_50": 0.0,
+      "ap50": 0.0,
+      "ap75": 0.0,
+      "ap50_95": 0.0
+    },
+    "referee": {
+      "instances": 13242,
+      "predictions": 0,
+      "precision_50": 0.0,
+      "recall_50": 0.0,
+      "ap50": 0.0,
+      "ap75": 0.0,
+      "ap50_95": 0.0
+    },
+    "other": {
+      "instances": 0,
+      "predictions": 0,
+      "precision_50": NaN,
+      "recall_50": NaN,
+      "ap50": NaN,
+      "ap75": NaN,
+      "ap50_95": NaN
+    }
+  }
 }
