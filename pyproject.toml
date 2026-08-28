@@ -5,8 +5,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "kaggle>=2.2.4",
+    "pytubefix>=10.11.0",
     "soccernet>=0.1.62",
     "torch>=2.13.0",
     "torchvision>=0.28.0",
-    "ultralytics>=8.4.116",
+    "ultralytics>=8.4.126",
+    "wandb>=0.28.2",
+    "weave>=0.53.6",
+    "yt-dlp>=2026.8.19",
 ]

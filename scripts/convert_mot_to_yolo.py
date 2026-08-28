@@ -16,7 +16,8 @@ leak near-duplicate consecutive frames across the split, so every 5th train
 sequence (by sorted name) becomes val; the rest stay train. SoccerNet's test/
 becomes YOLO test.
 
-Images are symlinked, not copied, to avoid duplicating ~17GB on disk.
+Images are copied (not symlinked) so the dataset/ folder is self-contained and
+zippable for upload elsewhere (e.g. Kaggle). This duplicates ~17GB on disk.
 
 Usage:
     python scripts/convert_mot_to_yolo.py
@@ -27,6 +28,7 @@ from __future__ import annotations
 import argparse
 import configparser
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -122,10 +124,10 @@ def convert_sequence(seq_dir: Path, images_out: Path, labels_out: Path) -> tuple
         label_path = labels_out / f"{stem}.txt"
         label_path.write_text("\n".join(lines) + ("\n" if lines else ""))
 
-        link_path = images_out / f"{stem}.jpg"
-        if link_path.exists() or link_path.is_symlink():
-            link_path.unlink()
-        link_path.symlink_to(img_path.resolve())
+        dst_path = images_out / f"{stem}.jpg"
+        if dst_path.exists() or dst_path.is_symlink():
+            dst_path.unlink()
+        shutil.copy2(img_path, dst_path)
 
     return len(images), num_boxes
 

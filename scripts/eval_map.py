@@ -347,12 +347,14 @@ def main() -> int:
         "per_class": {names.get(cid, str(cid)): per_class[cid] for cid in class_ids},
     }
 
-    args.report.parent.mkdir(parents=True, exist_ok=True)
-    # Keep one file per backend as well as the canonical accuracy.json.
-    args.report.write_text(json.dumps(payload, indent=2))
-    tagged = args.report.with_name(f"accuracy.{backend.name}.json")
+    report_path = args.report if args.report.is_absolute() else ROOT / args.report
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    # Keep one file per backend+weights as well as the canonical accuracy.json, so
+    # different weights evaluated through the same backend don't clobber each other.
+    report_path.write_text(json.dumps(payload, indent=2))
+    tagged = report_path.with_name(f"accuracy.{backend.name}.{weights.stem}.json")
     tagged.write_text(json.dumps(payload, indent=2))
-    print(f"\n[ok  ] wrote {args.report.relative_to(ROOT)} and {tagged.name}")
+    print(f"\n[ok  ] wrote {report_path.relative_to(ROOT)} and {tagged.name}")
 
     if args.compare_to:
         baseline_path = args.compare_to if args.compare_to.is_absolute() else ROOT / args.compare_to
