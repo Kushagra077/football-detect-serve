@@ -8,6 +8,7 @@ dependencies = [
     "kaggle>=2.2.4",
     "onnx>=1.22.0",
     "onnxruntime>=1.29.0",
+    "onnxslim>=0.1.96",
     "pytubefix>=10.11.0",
     "soccernet>=0.1.62",
     "torch>=2.13.0",

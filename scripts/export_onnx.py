@@ -66,8 +66,8 @@ def main() -> int:
 
     quantize = None if args.quantize == "none" else int(args.quantize)
     suffix = {None: "", 16: "_fp16", 8: "_int8"}[quantize]
-    default_out = ROOT / exp.get("onnx_path", "models/best.onnx")
-    out_path = Path(args.out) if args.out else default_out.with_name(default_out.stem + suffix + ".onnx")
+    # default output name tracks the weights file: football_detection_v1.pt -> football_detection_v1[_fp16|_int8].onnx
+    out_path = Path(args.out) if args.out else weights.with_name(weights.stem + suffix + ".onnx")
 
     export_kwargs = dict(
         format="onnx",
