@@ -36,11 +36,11 @@ class OnnxBackend(DetectorBackend):
         self.intra_op_threads = intra_op_threads
         self._yolo = None
         self._precision = "fp32"
+        self._static_batch: Optional[int] = None
         # lazily-built raw session (infer() only)
         self._sess = None
         self._input_name: Optional[str] = None
         self._input_dtype = np.float32
-        self._static_batch: Optional[int] = None
 
     @property
     def name(self) -> str:
@@ -54,6 +54,7 @@ class OnnxBackend(DetectorBackend):
             raise FileNotFoundError(f"onnx model not found: {path}")
 
         self._precision = _detect_precision(path)
+        self._static_batch = _static_batch_of(str(path))
         self._yolo = YOLO(str(path), task="detect")
 
         names = getattr(self._yolo, "names", None)
@@ -64,8 +65,20 @@ class OnnxBackend(DetectorBackend):
     def predict(self, images: Sequence[np.ndarray]) -> List[List[Detection]]:
         if self._yolo is None:
             raise RuntimeError("OnnxBackend.load() was never called")
+
+        images = list(images)
+        # A fixed-batch graph (int8 export is batch-1) can't take the whole list at
+        # once — ultralytics feeds it as one tensor and onnxruntime rejects the shape.
+        # Fall back to fixed-size chunks; the final short chunk still works at batch 1.
+        sb = self._static_batch
+        if sb and len(images) > sb:
+            out: List[List[Detection]] = []
+            for i in range(0, len(images), sb):
+                out.extend(self.predict(images[i : i + sb]))
+            return out
+
         results = self._yolo.predict(
-            list(images),
+            images,
             imgsz=self.imgsz,
             conf=self.conf,
             iou=self.iou,
@@ -163,6 +176,18 @@ def _detect_precision(path: Path) -> str:
         if n.op_type.startswith(("QLinear", "QuantizeLinear")):
             return "int8"
     return "fp32"
+
+
+def _static_batch_of(path: str) -> Optional[int]:
+    """Fixed batch size of the graph's first input, or None if the axis is dynamic."""
+    try:
+        import onnx
+
+        model = onnx.load(path, load_external_data=False)
+        dim0 = model.graph.input[0].type.tensor_type.shape.dim[0]
+        return dim0.dim_value if dim0.HasField("dim_value") and dim0.dim_value > 0 else None
+    except Exception:
+        return None
 
 
 def _chunks(arr: np.ndarray, size: int):
