@@ -1,16 +1,22 @@
-"""ONNX Runtime backend. Handles fp32 and statically-quantized int8 graphs.
+"""ONNX Runtime backend. Handles fp32, fp16 and statically-quantized int8 graphs.
 
-Both live in the same class: quantization changes the weights, not the graph
-signature, so the only difference visible here is `name` and the input dtype.
+predict() goes through ultralytics' own YOLO("model.onnx").predict(), which decodes
+whatever head format the exported graph carries (classic anchor grid + NMS, or
+YOLO26's end2end top-k output) correctly and matches the torch backend path exactly.
+
+infer() keeps a bare onnxruntime session that returns the raw output tensor. It is
+only used by scripts/check_parity.py and scripts/benchmark.py's raw-tensor mode,
+still assumes the classic anchor-grid layout, and is built lazily so the common
+eval/serve path never pays for it. See PROGRESS.md "Model family switched to YOLO26".
 """
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 import numpy as np
 
-from app.backends.base import DetectorBackend
+from app.backends.base import DetectorBackend, Detection
 
 _METADATA_NAMES_KEY = "names"
 
@@ -28,66 +34,97 @@ class OnnxBackend(DetectorBackend):
         self.device = device
         self.providers = providers
         self.intra_op_threads = intra_op_threads
+        self._yolo = None
+        self._precision = "fp32"
+        # lazily-built raw session (infer() only)
         self._sess = None
         self._input_name: Optional[str] = None
         self._input_dtype = np.float32
         self._static_batch: Optional[int] = None
-        self._is_int8 = False
 
     @property
     def name(self) -> str:
-        return "onnx-int8" if self._is_int8 else "onnx-fp32"
-
-    def _resolve_providers(self) -> List[str]:
-        import onnxruntime as ort
-
-        if self.providers:
-            return self.providers
-        available = ort.get_available_providers()
-        if self.device != "cpu" and "CUDAExecutionProvider" in available:
-            return ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        return ["CPUExecutionProvider"]
+        return f"onnx-{self._precision}"
 
     def load(self) -> "OnnxBackend":
-        import onnxruntime as ort
+        from ultralytics import YOLO
 
         path = Path(self.weights)
         if not path.exists():
             raise FileNotFoundError(f"onnx model not found: {path}")
+
+        self._precision = _detect_precision(path)
+        self._yolo = YOLO(str(path), task="detect")
+
+        names = getattr(self._yolo, "names", None)
+        if names and not self.class_names:
+            self.class_names = {int(k): str(v) for k, v in dict(names).items()}
+        return self
+
+    def predict(self, images: Sequence[np.ndarray]) -> List[List[Detection]]:
+        if self._yolo is None:
+            raise RuntimeError("OnnxBackend.load() was never called")
+        results = self._yolo.predict(
+            list(images),
+            imgsz=self.imgsz,
+            conf=self.conf,
+            iou=self.iou,
+            max_det=self.max_det,
+            device=self.device,
+            verbose=False,
+        )
+        out: List[List[Detection]] = []
+        for r in results:
+            dets: List[Detection] = []
+            for box in r.boxes:
+                x1, y1, x2, y2 = box.xyxy[0].tolist()
+                cls_id = int(box.cls[0])
+                dets.append(
+                    Detection(
+                        x1=x1,
+                        y1=y1,
+                        x2=x2,
+                        y2=y2,
+                        score=float(box.conf[0]),
+                        class_id=cls_id,
+                        class_name=self.class_names.get(cls_id, str(cls_id)),
+                    )
+                )
+            out.append(dets)
+        return out
+
+    # ---------------- raw-tensor path (check_parity / benchmark only) ----------------
+
+    def _ensure_session(self) -> None:
+        if self._sess is not None:
+            return
+        import onnxruntime as ort
 
         opts = ort.SessionOptions()
         opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         if self.intra_op_threads:
             opts.intra_op_num_threads = self.intra_op_threads
 
-        self._sess = ort.InferenceSession(
-            str(path), sess_options=opts, providers=self._resolve_providers()
-        )
+        available = ort.get_available_providers()
+        if self.providers:
+            providers = self.providers
+        elif self.device != "cpu" and "CUDAExecutionProvider" in available:
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        else:
+            providers = ["CPUExecutionProvider"]
 
+        self._sess = ort.InferenceSession(self.weights, sess_options=opts, providers=providers)
         inp = self._sess.get_inputs()[0]
         self._input_name = inp.name
         self._input_dtype = np.float16 if "float16" in inp.type else np.float32
         batch_dim = inp.shape[0] if inp.shape else None
         self._static_batch = batch_dim if isinstance(batch_dim, int) else None
 
-        # int8 detection: any quantized weight initializer / QLinear node
-        self._is_int8 = "int8" in path.name.lower() or any(
-            n.op_type.startswith(("QLinear", "QuantizeLinear"))
-            for n in _graph_nodes(str(path))
-        )
-
-        meta = self._sess.get_modelmeta().custom_metadata_map or {}
-        if not self.class_names and _METADATA_NAMES_KEY in meta:
-            self.class_names = _parse_names(meta[_METADATA_NAMES_KEY])
-        return self
-
     def infer(self, batch: np.ndarray) -> np.ndarray:
-        if self._sess is None or self._input_name is None:
-            raise RuntimeError("OnnxBackend.load() was never called")
-
+        self._ensure_session()
+        assert self._input_name is not None
         batch = batch.astype(self._input_dtype, copy=False)
 
-        # A fixed-batch export still has to serve whatever the caller sent.
         if self._static_batch is not None and batch.shape[0] != self._static_batch:
             return np.concatenate(
                 [
@@ -111,7 +148,21 @@ class OnnxBackend(DetectorBackend):
         return np.concatenate([chunk, pad], axis=0)
 
     def close(self) -> None:
+        self._yolo = None
         self._sess = None
+
+
+def _detect_precision(path: Path) -> str:
+    """int8 / fp16 / fp32 from the filename or the graph's quantized nodes."""
+    stem = path.name.lower()
+    if "int8" in stem:
+        return "int8"
+    if "fp16" in stem or "half" in stem:
+        return "fp16"
+    for n in _graph_nodes(str(path)):
+        if n.op_type.startswith(("QLinear", "QuantizeLinear")):
+            return "int8"
+    return "fp32"
 
 
 def _chunks(arr: np.ndarray, size: int):
