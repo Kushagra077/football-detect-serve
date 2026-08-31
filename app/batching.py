@@ -139,20 +139,16 @@ class BatchedPredictor:
                     job.future.set_result(dets)
 
     def _infer_batch(self, images: Sequence[np.ndarray]) -> tuple[List[List[Detection]], float]:
-        """Runs in a worker thread. Times pre/infer separately for metrics."""
+        """Runs in a worker thread. predict() covers preprocess + inference + decode."""
         t0 = time.perf_counter()
-        tensor, metas = self.backend.preprocess(images)
-        t1 = time.perf_counter()
-        raw = self.backend.infer(tensor)
-        t2 = time.perf_counter()
-        results = self.backend.postprocess(raw, metas)
+        results = self.backend.predict(images)
+        infer_s = time.perf_counter() - t0
 
-        metrics.PREPROCESS_LATENCY.observe(t1 - t0)
-        metrics.INFERENCE_LATENCY.labels(backend=self.backend.name).observe(t2 - t1)
+        metrics.INFERENCE_LATENCY.labels(backend=self.backend.name).observe(infer_s)
         for dets in results:
             for det in dets:
                 metrics.DETECTIONS.labels(class_name=det.class_name).inc()
-        return results, (t2 - t1) * 1000.0
+        return results, infer_s * 1000.0
 
     def _drain_cancelled(self) -> None:
         while not self._queue.empty():

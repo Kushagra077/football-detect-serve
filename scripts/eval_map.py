@@ -236,8 +236,12 @@ def main() -> int:
         print(f"[fail] no images under {images_dir}", file=sys.stderr)
         return 2
 
-    default_weights = {"torch": "models/best.pt", "onnx": cfg["export"]["onnx_path"]}[args.backend]
-    weights = Path(args.weights or ROOT / default_weights)
+    if not args.weights:
+        print("[fail] --weights is required (e.g. models/football_detection_v1.onnx)", file=sys.stderr)
+        return 2
+    weights = Path(args.weights)
+    if not weights.is_absolute():
+        weights = ROOT / weights
     if not weights.exists():
         print(f"[fail] weights not found: {weights}", file=sys.stderr)
         return 2

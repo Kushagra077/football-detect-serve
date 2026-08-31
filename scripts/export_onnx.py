@@ -3,7 +3,7 @@
 
 Decode is handled by ultralytics on load (YOLO("model.onnx")), so `nms=False` here
 just means "don't add a second NMS op" — YOLO26's end2end head already emits final
-boxes. The raw-tensor path in app/backends/base.py is kept only for check_parity.py.
+boxes. Parity with torch is checked via scripts/eval_map.py (onnx-fp32 mAP == torch).
 
 Usage:
     python scripts/export_onnx.py --weights models/football_detection_v1.pt
@@ -30,7 +30,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", type=Path, default=ROOT / "configs/train.yaml")
     ap.add_argument("--weights", default=None, help="default: models/best.pt")
-    ap.add_argument("--out", default=None, help="default: export.onnx_path from config")
+    ap.add_argument("--out", default=None, help="default: <weights stem>[_fp16|_int8].onnx next to the checkpoint")
     ap.add_argument("--imgsz", type=int, default=None)
     ap.add_argument("--opset", type=int, default=None)
     ap.add_argument("--no-dynamic", action="store_true", help="fixed batch size of 1")
@@ -152,7 +152,7 @@ def main() -> int:
     sidecar = out_path.with_suffix(".meta.json")
     sidecar.write_text(json.dumps(meta, indent=2))
     print(f"[ok  ] wrote {rel(sidecar)}")
-    print("\nnext: python scripts/check_parity.py")
+    print("\nnext: python scripts/eval_map.py --backend onnx --weights", rel(out_path))
     return 0
 
 

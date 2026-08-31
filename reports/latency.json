@@ -1,12 +1,295 @@
 {
-  "_placeholder": "Overwritten by scripts/benchmark.py. Shape shown for reference.",
   "environment": {
-    "platform": null,
-    "processor": null,
-    "python": null,
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "processor": "arm",
+    "logical_cores": 8,
+    "physical_cores": 8,
+    "omp_threads": 4,
     "device": "cpu",
-    "ort_threads": "default"
+    "versions": {
+      "python": "3.13.13",
+      "torch": "2.13.0",
+      "onnxruntime": "1.29.0",
+      "ultralytics": "8.4.126",
+      "numpy": "2.5.1"
+    }
   },
-  "settings": { "imgsz": 640, "runs": 50, "warmup": 10 },
-  "results": []
+  "settings": {
+    "imgsz": 640,
+    "runs": 50,
+    "warmup": 20,
+    "batch_sizes": [
+      1,
+      2,
+      4,
+      8
+    ]
+  },
+  "note": "single-request latency; concurrency 1/4/16 is measured by the Step 8 HTTP load test",
+  "results": [
+    {
+      "mean_ms": 23.847944958833978,
+      "std_ms": 0.5577086772777102,
+      "min_ms": 23.191832995507866,
+      "p50_ms": 23.72512449801434,
+      "p90_ms": 24.080854112980887,
+      "p95_ms": 24.517833153367974,
+      "p99_ms": 26.345404835010413,
+      "max_ms": 26.381583011243492,
+      "batch_size": 1,
+      "runs": 50,
+      "per_image_mean_ms": 23.847944958833978,
+      "throughput_img_s": 41.93233428398914,
+      "ultralytics_speed_ms": {
+        "preprocess": 0.733,
+        "inference": 22.603,
+        "postprocess": 0.083
+      },
+      "backend": "torch",
+      "model": "models/football_detection_v1.pt",
+      "size_mb": 5.36
+    },
+    {
+      "mean_ms": 50.64929588348605,
+      "std_ms": 0.42611752106448963,
+      "min_ms": 50.180707999970764,
+      "p50_ms": 50.56245900050271,
+      "p90_ms": 50.98673691099975,
+      "p95_ms": 51.0980707971612,
+      "p99_ms": 52.194150831201114,
+      "max_ms": 52.93654199340381,
+      "batch_size": 2,
+      "runs": 50,
+      "per_image_mean_ms": 25.324647941743024,
+      "throughput_img_s": 39.487222183716284,
+      "ultralytics_speed_ms": {
+        "preprocess": 0.729,
+        "inference": 24.251,
+        "postprocess": 0.067
+      },
+      "backend": "torch",
+      "model": "models/football_detection_v1.pt",
+      "size_mb": 5.36
+    },
+    {
+      "mean_ms": 94.67917667818256,
+      "std_ms": 13.253977584076265,
+      "min_ms": 85.4058749973774,
+      "p50_ms": 90.51952099252958,
+      "p90_ms": 101.92000000097326,
+      "p95_ms": 122.65514724567763,
+      "p99_ms": 147.0447155757574,
+      "max_ms": 151.5744999924209,
+      "batch_size": 4,
+      "runs": 50,
+      "per_image_mean_ms": 23.66979416954564,
+      "throughput_img_s": 42.24793814585147,
+      "ultralytics_speed_ms": {
+        "preprocess": 0.691,
+        "inference": 20.869,
+        "postprocess": 0.056
+      },
+      "backend": "torch",
+      "model": "models/football_detection_v1.pt",
+      "size_mb": 5.36
+    },
+    {
+      "mean_ms": 166.44592501805164,
+      "std_ms": 1.3637700739070402,
+      "min_ms": 164.02108399779536,
+      "p50_ms": 166.1632284958614,
+      "p90_ms": 168.5513460804941,
+      "p95_ms": 169.0559374910663,
+      "p99_ms": 169.67361999151763,
+      "max_ms": 169.92449999088421,
+      "batch_size": 8,
+      "runs": 50,
+      "per_image_mean_ms": 20.805740627256455,
+      "throughput_img_s": 48.06365790650851,
+      "ultralytics_speed_ms": {
+        "preprocess": 0.679,
+        "inference": 19.689,
+        "postprocess": 0.049
+      },
+      "backend": "torch",
+      "model": "models/football_detection_v1.pt",
+      "size_mb": 5.36
+    },
+    {
+      "mean_ms": 16.342588298139162,
+      "std_ms": 0.7021853054387672,
+      "min_ms": 16.016665991628543,
+      "p50_ms": 16.185562504688278,
+      "p90_ms": 16.421658420586027,
+      "p95_ms": 16.499618884699885,
+      "p99_ms": 19.67253500013612,
+      "max_ms": 20.415375009179115,
+      "batch_size": 1,
+      "runs": 50,
+      "per_image_mean_ms": 16.342588298139162,
+      "throughput_img_s": 61.189817778978394,
+      "ultralytics_speed_ms": {
+        "preprocess": 0.803,
+        "inference": 14.983,
+        "postprocess": 0.079
+      },
+      "backend": "onnx-fp32",
+      "model": "models/football_detection_v1.onnx",
+      "size_mb": 10.52
+    },
+    {
+      "mean_ms": 50.07954334025271,
+      "std_ms": 0.7417326335980451,
+      "min_ms": 49.60454200045206,
+      "p50_ms": 49.87408299348317,
+      "p90_ms": 50.317337483284064,
+      "p95_ms": 51.04117269074777,
+      "p99_ms": 53.42458451370476,
+      "max_ms": 53.89216702315025,
+      "batch_size": 2,
+      "runs": 50,
+      "per_image_mean_ms": 25.039771670126356,
+      "throughput_img_s": 39.93646640129102,
+      "ultralytics_speed_ms": {
+        "preprocess": 0.778,
+        "inference": 23.89,
+        "postprocess": 0.081
+      },
+      "backend": "onnx-fp32",
+      "model": "models/football_detection_v1.onnx",
+      "size_mb": 10.52
+    },
+    {
+      "mean_ms": 59.704400860355236,
+      "std_ms": 1.188535452585463,
+      "min_ms": 58.6078749911394,
+      "p50_ms": 59.268833516398445,
+      "p90_ms": 61.52839580900036,
+      "p95_ms": 62.34103331225924,
+      "p99_ms": 63.646174411987886,
+      "max_ms": 63.96812500315718,
+      "batch_size": 4,
+      "runs": 50,
+      "per_image_mean_ms": 14.926100215088809,
+      "throughput_img_s": 66.99673629345588,
+      "ultralytics_speed_ms": {
+        "preprocess": 0.768,
+        "inference": 13.646,
+        "postprocess": 0.059
+      },
+      "backend": "onnx-fp32",
+      "model": "models/football_detection_v1.onnx",
+      "size_mb": 10.52
+    },
+    {
+      "mean_ms": 118.52106073871255,
+      "std_ms": 1.1397946859549957,
+      "min_ms": 117.6106670172885,
+      "p50_ms": 118.07058299018536,
+      "p90_ms": 120.16382140282076,
+      "p95_ms": 120.78163722035242,
+      "p99_ms": 122.42079775838647,
+      "max_ms": 123.13466699561104,
+      "batch_size": 8,
+      "runs": 50,
+      "per_image_mean_ms": 14.815132592339069,
+      "throughput_img_s": 67.49855215721132,
+      "ultralytics_speed_ms": {
+        "preprocess": 0.726,
+        "inference": 13.777,
+        "postprocess": 0.053
+      },
+      "backend": "onnx-fp32",
+      "model": "models/football_detection_v1.onnx",
+      "size_mb": 10.52
+    },
+    {
+      "mean_ms": 19.379774241242558,
+      "std_ms": 1.087588171347097,
+      "min_ms": 18.879375013057142,
+      "p50_ms": 19.10516650241334,
+      "p90_ms": 19.455841698800214,
+      "p95_ms": 20.727704348973926,
+      "p99_ms": 23.87121809646486,
+      "max_ms": 26.18387501570396,
+      "batch_size": 1,
+      "runs": 50,
+      "per_image_mean_ms": 19.379774241242558,
+      "throughput_img_s": 51.60018829692434,
+      "ultralytics_speed_ms": {
+        "preprocess": 1.096,
+        "inference": 17.426,
+        "postprocess": 0.103
+      },
+      "backend": "onnx-int8",
+      "model": "models/football_detection_v1_int8.onnx",
+      "size_mb": 2.94
+    },
+    {
+      "mean_ms": 40.66494162136223,
+      "std_ms": 10.903344643495782,
+      "min_ms": 38.04450001916848,
+      "p50_ms": 38.40402101923246,
+      "p90_ms": 41.211362212197855,
+      "p95_ms": 42.69406455568969,
+      "p99_ms": 81.22290023602531,
+      "max_ms": 116.2846660008654,
+      "batch_size": 2,
+      "runs": 50,
+      "per_image_mean_ms": 20.332470810681116,
+      "throughput_img_s": 49.182414144899546,
+      "ultralytics_speed_ms": {
+        "preprocess": 1.081,
+        "inference": 19.727,
+        "postprocess": 0.121
+      },
+      "backend": "onnx-int8",
+      "model": "models/football_detection_v1_int8.onnx",
+      "size_mb": 2.94
+    },
+    {
+      "mean_ms": 77.18983997940086,
+      "std_ms": 1.4317949344364103,
+      "min_ms": 75.98070800304413,
+      "p50_ms": 76.77885449083988,
+      "p90_ms": 78.72121661202982,
+      "p95_ms": 78.93818331358489,
+      "p99_ms": 82.72189817827892,
+      "max_ms": 85.15262501896359,
+      "batch_size": 4,
+      "runs": 50,
+      "per_image_mean_ms": 19.297459994850215,
+      "throughput_img_s": 51.820291388963284,
+      "ultralytics_speed_ms": {
+        "preprocess": 1.069,
+        "inference": 17.493,
+        "postprocess": 0.106
+      },
+      "backend": "onnx-int8",
+      "model": "models/football_detection_v1_int8.onnx",
+      "size_mb": 2.94
+    },
+    {
+      "mean_ms": 157.48530077689793,
+      "std_ms": 8.64464010644314,
+      "min_ms": 152.74891699664295,
+      "p50_ms": 154.69677047803998,
+      "p90_ms": 160.761383298086,
+      "p95_ms": 182.57775844540447,
+      "p99_ms": 188.9259960732306,
+      "max_ms": 192.74270799360238,
+      "batch_size": 8,
+      "runs": 50,
+      "per_image_mean_ms": 19.68566259711224,
+      "throughput_img_s": 50.7983917263061,
+      "ultralytics_speed_ms": {
+        "preprocess": 1.11,
+        "inference": 17.588,
+        "postprocess": 0.104
+      },
+      "backend": "onnx-int8",
+      "model": "models/football_detection_v1_int8.onnx",
+      "size_mb": 2.94
+    }
+  ]
 }

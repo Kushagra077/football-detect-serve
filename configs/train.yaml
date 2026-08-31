@@ -59,27 +59,23 @@ train:
   close_mosaic: 10             # disable mosaic for the final N epochs
 
 export:
-  onnx_path: models/best.onnx
-  int8_path: models/best.int8.onnx
+  # scripts/export_onnx.py --weights <ckpt> [--quantize 16|8 --data dataset/data.yaml]
+  # output name tracks the checkpoint: football_detection_v1.pt -> football_detection_v1[_fp16|_int8].onnx
   opset: 12
   dynamic_batch: true
   simplify: true
 
-parity:
-  # check_parity.py gate thresholds (torch vs onnx on the same inputs)
-  max_abs_diff: 1.0e-3
-  max_mean_diff: 1.0e-4
-  num_samples: 8
-
 quantize:
-  calib_images: 200            # images sampled from the val split for calibration
-  per_channel: true
-  # int8 accuracy gate: mAP50-95 may not drop more than this (absolute)
+  # int8 calibration is done by ultralytics (ORT static quant) at export time:
+  #   --split train --fraction 0.01  (~345 of 34.5k train images)
+  # int8 accuracy gate: mAP50-95 "degraded but sane, not collapse". max_map_drop is
+  # a scaffold guess kept until the final (30+ epoch) weights fix a real number;
+  # measured 10-epoch drop was 0.027 (nano) / 0.064 (small). See PROGRESS.md.
   max_map_drop: 0.02
 
 serve:
   backend: onnx                # torch | onnx
-  weights: models/best.onnx
+  weights: models/football_detection_v1.onnx
   imgsz: 640
   conf: 0.25
   iou: 0.45

@@ -1,7 +1,10 @@
-"""Backend contract: one preprocess/infer/postprocess path shared by every runtime.
+"""Backend contract: one predict() interface shared by every runtime.
 
 Everything downstream (serving, eval, benchmark) talks only to this interface, so
-torch / onnx-fp32 / onnx-int8 are measured with identical pre- and postprocessing.
+torch / onnx-fp32 / onnx-int8 are driven identically. Each backend's predict()
+delegates to ultralytics, which owns preprocess + inference + decode for whatever
+head format the model uses. letterbox()/preprocess() below are kept as generic
+image utilities (calibration, a future custom decoder) but are not on the hot path.
 """
 from __future__ import annotations
 
@@ -56,33 +59,8 @@ def letterbox(
     return img, LetterboxMeta(ratio=ratio, pad_w=pad_w, pad_h=pad_h, orig_h=h, orig_w=w)
 
 
-def nms_numpy(boxes: np.ndarray, scores: np.ndarray, iou_thres: float) -> List[int]:
-    """Greedy NMS on xyxy boxes. Returns kept indices, score-descending."""
-    if boxes.size == 0:
-        return []
-    x1, y1, x2, y2 = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
-    areas = np.maximum(0.0, x2 - x1) * np.maximum(0.0, y2 - y1)
-    order = scores.argsort()[::-1]
-
-    keep: List[int] = []
-    while order.size > 0:
-        i = order[0]
-        keep.append(int(i))
-        if order.size == 1:
-            break
-        rest = order[1:]
-        xx1 = np.maximum(x1[i], x1[rest])
-        yy1 = np.maximum(y1[i], y1[rest])
-        xx2 = np.minimum(x2[i], x2[rest])
-        yy2 = np.minimum(y2[i], y2[rest])
-        inter = np.maximum(0.0, xx2 - xx1) * np.maximum(0.0, yy2 - yy1)
-        iou = inter / (areas[i] + areas[rest] - inter + 1e-9)
-        order = rest[iou <= iou_thres]
-    return keep
-
-
 class DetectorBackend(abc.ABC):
-    """Abstract detector. Subclasses implement only `infer` plus load/meta."""
+    """Abstract detector. Subclasses implement load / name / predict."""
 
     def __init__(
         self,
@@ -119,10 +97,18 @@ class DetectorBackend(abc.ABC):
     def close(self) -> None:  # pragma: no cover - most backends need nothing
         pass
 
-    # ---------------- shared pipeline ----------------
+    @abc.abstractmethod
+    def predict(self, images: Sequence[np.ndarray]) -> List[List[Detection]]:
+        """BGR uint8 HWC images -> per-image detections in original coordinates."""
+
+    # ---------------- generic image utilities (not on the predict path) ----------------
 
     def preprocess(self, images: Sequence[np.ndarray]) -> Tuple[np.ndarray, List[LetterboxMeta]]:
-        """BGR uint8 HWC list -> NCHW float32 [0,1] batch + letterbox metadata."""
+        """BGR uint8 HWC list -> NCHW float32 [0,1] batch + letterbox metadata.
+
+        Not used by predict() (ultralytics does its own preprocessing); kept for
+        calibration and any future raw-tensor tooling.
+        """
         tensors, metas = [], []
         for img in images:
             padded, meta = letterbox(img, self.imgsz)
@@ -130,80 +116,6 @@ class DetectorBackend(abc.ABC):
             tensors.append(rgb.transpose(2, 0, 1).astype(np.float32) / 255.0)
             metas.append(meta)
         return np.ascontiguousarray(np.stack(tensors, axis=0)), metas
-
-    @abc.abstractmethod
-    def infer(self, batch: np.ndarray) -> np.ndarray:
-        """Raw forward pass.
-
-        Returns YOLOv8 head output shaped (B, 4 + num_classes, num_anchors) with
-        xywh box coords in letterboxed pixel space and per-class sigmoid scores.
-        """
-
-    def postprocess(
-        self, raw: np.ndarray, metas: Sequence[LetterboxMeta]
-    ) -> List[List[Detection]]:
-        """Decode raw head output -> per-image detections in original coords."""
-        raw = np.asarray(raw, dtype=np.float32)
-        if raw.ndim == 2:  # single image, missing batch dim
-            raw = raw[None]
-
-        results: List[List[Detection]] = []
-        for i, meta in enumerate(metas):
-            pred = raw[i]
-            # Accept both (4+nc, anchors) and (anchors, 4+nc) layouts.
-            if pred.shape[0] < pred.shape[1]:
-                pred = pred.transpose(1, 0)  # -> (anchors, 4+nc)
-
-            boxes_xywh = pred[:, :4]
-            cls_scores = pred[:, 4:]
-            if cls_scores.size == 0:
-                results.append([])
-                continue
-
-            class_ids = cls_scores.argmax(axis=1)
-            scores = cls_scores[np.arange(cls_scores.shape[0]), class_ids]
-
-            mask = scores >= self.conf
-            boxes_xywh, scores, class_ids = boxes_xywh[mask], scores[mask], class_ids[mask]
-            if boxes_xywh.size == 0:
-                results.append([])
-                continue
-
-            # xywh (center) -> xyxy, still letterboxed space
-            cx, cy, bw, bh = boxes_xywh.T
-            xyxy = np.stack([cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2], axis=1)
-
-            # undo letterbox
-            xyxy[:, [0, 2]] -= meta.pad_w
-            xyxy[:, [1, 3]] -= meta.pad_h
-            xyxy /= meta.ratio
-            xyxy[:, [0, 2]] = xyxy[:, [0, 2]].clip(0, meta.orig_w)
-            xyxy[:, [1, 3]] = xyxy[:, [1, 3]].clip(0, meta.orig_h)
-
-            # class-aware NMS: offset boxes per class so classes never suppress each other
-            offsets = class_ids.astype(np.float32) * (max(meta.orig_h, meta.orig_w) + 1.0)
-            keep = nms_numpy(xyxy + offsets[:, None], scores, self.iou)[: self.max_det]
-
-            results.append(
-                [
-                    Detection(
-                        x1=float(xyxy[k, 0]),
-                        y1=float(xyxy[k, 1]),
-                        x2=float(xyxy[k, 2]),
-                        y2=float(xyxy[k, 3]),
-                        score=float(scores[k]),
-                        class_id=int(class_ids[k]),
-                        class_name=self.class_names.get(int(class_ids[k]), str(class_ids[k])),
-                    )
-                    for k in keep
-                ]
-            )
-        return results
-
-    def predict(self, images: Sequence[np.ndarray]) -> List[List[Detection]]:
-        """Full path: preprocess -> infer -> postprocess."""
-        batch, metas = self.preprocess(images)
-        return self.postprocess(self.infer(batch), metas)
 
 
 def build_backend(
