@@ -44,12 +44,14 @@ class PredictResponse(BaseModel):
     inference_ms: float = Field(description="Model forward pass only.")
     total_ms: float = Field(description="Decode + preprocess + infer + postprocess.")
     batch_size: int = Field(description="Requests coalesced into this forward pass.")
+    batched: bool = Field(description="False when the request bypassed the batch queue.")
     request_id: str
 
 
 class HealthResponse(BaseModel):
     status: str
-    backend: str
+    backend: str = Field(description="The default backend used when ?backend= is omitted.")
+    backends: Dict[str, str] = Field(description="All loaded backends: name -> model path.")
     model: str
     imgsz: int
     classes: Dict[int, str]

@@ -1,11 +1,16 @@
 """FastAPI inference service: /predict, /healthz, /metrics.
 
-Config comes from env vars so the same image serves torch / onnx-fp32 / onnx-int8:
+One process serves several backends at once so a single deploy can demo and
+load-test torch / onnx-fp32 / onnx-int8 side by side. Pick per request with
+`?backend=<name>`; omit it for DEFAULT_BACKEND. `?batch=false` bypasses the
+dynamic batcher (for the batching on/off throughput comparison).
 
-    BACKEND=onnx MODEL_PATH=models/best.onnx uvicorn app.main:app --port 8000
+    MODELS="torch=models/football_detection_v1.pt,onnx-fp32=models/football_detection_v1.onnx,onnx-int8=models/football_detection_v1_int8.onnx" \
+    DEFAULT_BACKEND=onnx-fp32 uvicorn app.main:app --port 7860
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import logging
@@ -13,14 +18,14 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import cv2
 import numpy as np
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 
 from app import metrics
-from app.backends.base import Detection, build_backend
+from app.backends.base import Detection, DetectorBackend, build_backend
 from app.batching import BatchedPredictor, QueueOverflow
 from app.schemas import (
     BoxOut,
@@ -38,13 +43,39 @@ log = logging.getLogger("app")
 
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", 10 * 1024 * 1024))
 
+_DEFAULT_MODELS = (
+    "torch=models/football_detection_v1.pt,"
+    "onnx-fp32=models/football_detection_v1.onnx,"
+    "onnx-int8=models/football_detection_v1_int8.onnx"
+)
+
+
+def _parse_models(spec: str) -> Dict[str, str]:
+    """'name=path,name=path' -> {name: path}, order preserved."""
+    out: Dict[str, str] = {}
+    for pair in spec.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        if "=" not in pair:
+            raise ValueError(f"bad MODELS entry {pair!r} (want 'name=path')")
+        name, path = pair.split("=", 1)
+        out[name.strip()] = path.strip()
+    return out
+
+
+def _kind_of(name: str) -> str:
+    return "torch" if name.startswith("torch") else "onnx"
+
 
 class Settings:
     """Env-driven server settings."""
 
     def __init__(self) -> None:
-        self.backend = os.getenv("BACKEND", "onnx")
-        self.model_path = os.getenv("MODEL_PATH", "models/best.onnx")
+        self.models = _parse_models(os.getenv("MODELS", "").strip() or _DEFAULT_MODELS)
+        self.default_backend = os.getenv("DEFAULT_BACKEND", next(iter(self.models)))
+        if self.default_backend not in self.models:
+            raise ValueError(f"DEFAULT_BACKEND={self.default_backend} not in MODELS {list(self.models)}")
         self.device = os.getenv("DEVICE", "cpu")
         self.imgsz = int(os.getenv("IMGSZ", 640))
         self.conf = float(os.getenv("CONF", 0.25))
@@ -58,50 +89,54 @@ class Settings:
 
 SETTINGS = Settings()
 
-# Populated on startup.
-STATE: dict = {"backend": None, "predictor": None, "warm": False, "started_at": time.time()}
+# Populated on startup: name -> {"backend": DetectorBackend, "predictor": BatchedPredictor}
+STATE: dict = {"registry": {}, "default": SETTINGS.default_backend, "warm": False, "started_at": time.time()}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info("loading %s backend from %s", SETTINGS.backend, SETTINGS.model_path)
-    backend = build_backend(
-        kind=SETTINGS.backend,
-        weights=SETTINGS.model_path,
-        imgsz=SETTINGS.imgsz,
-        conf=SETTINGS.conf,
-        iou=SETTINGS.iou,
-        max_det=SETTINGS.max_det,
-        device=SETTINGS.device,
-    )
-    predictor = BatchedPredictor(
-        backend,
-        max_batch_size=SETTINGS.max_batch_size,
-        max_wait_ms=SETTINGS.max_wait_ms,
-        max_queue_size=SETTINGS.max_queue_size,
-    )
-    await predictor.start()
+    registry: Dict[str, dict] = {}
+    for name, path in SETTINGS.models.items():
+        log.info("loading backend %s (%s) from %s", name, _kind_of(name), path)
+        backend = build_backend(
+            kind=_kind_of(name),
+            weights=path,
+            imgsz=SETTINGS.imgsz,
+            conf=SETTINGS.conf,
+            iou=SETTINGS.iou,
+            max_det=SETTINGS.max_det,
+            device=SETTINGS.device,
+        )
+        predictor = BatchedPredictor(
+            backend,
+            max_batch_size=SETTINGS.max_batch_size,
+            max_wait_ms=SETTINGS.max_wait_ms,
+            max_queue_size=SETTINGS.max_queue_size,
+        )
+        await predictor.start()
+        if SETTINGS.warmup_runs:
+            backend.warmup(SETTINGS.warmup_runs)
+        registry[name] = {"backend": backend, "predictor": predictor}
+        metrics.set_model_info(backend.name, path, SETTINGS.imgsz)
+        log.info("ready: %s -> %s classes=%s", name, backend.name, backend.class_names)
 
-    if SETTINGS.warmup_runs:
-        backend.warmup(SETTINGS.warmup_runs)
-
-    STATE.update(backend=backend, predictor=predictor, warm=True, started_at=time.time())
-    metrics.set_model_info(backend.name, SETTINGS.model_path, SETTINGS.imgsz)
-    log.info("ready: backend=%s classes=%s", backend.name, backend.class_names)
+    STATE.update(registry=registry, warm=True, started_at=time.time())
+    log.info("service ready: backends=%s default=%s", list(registry), STATE["default"])
 
     try:
         yield
     finally:
         STATE["warm"] = False
-        await predictor.stop()
-        backend.close()
+        for entry in registry.values():
+            await entry["predictor"].stop()
+            entry["backend"].close()
         log.info("shutdown complete")
 
 
 app = FastAPI(
     title="football-detect-serve",
     description="Football object detection (ball / goalkeeper / player / referee).",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -131,8 +166,6 @@ def _decode_b64(payload: str) -> bytes:
 
 
 async def _fetch_url(url: str) -> bytes:
-    import asyncio
-
     import requests
 
     def _get() -> bytes:
@@ -146,21 +179,27 @@ async def _fetch_url(url: str) -> bytes:
         raise HTTPException(status_code=400, detail=f"could not fetch image_url: {exc}") from exc
 
 
-def _get_predictor() -> BatchedPredictor:
-    predictor = STATE.get("predictor")
-    if predictor is None or not STATE.get("warm"):
-        raise HTTPException(status_code=503, detail="model is not loaded yet")
-    return predictor
+def _resolve(name: Optional[str]) -> tuple[str, DetectorBackend, BatchedPredictor]:
+    """Map ?backend= to a loaded (name, backend, predictor). Raises 400/503."""
+    if not STATE.get("warm"):
+        raise HTTPException(status_code=503, detail="models are not loaded yet")
+    key = name or STATE["default"]
+    entry = STATE["registry"].get(key)
+    if entry is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown backend {key!r}; available: {list(STATE['registry'])}",
+        )
+    return key, entry["backend"], entry["predictor"]
 
 
-def _apply_overrides(opts: PredictOptions) -> None:
-    """Per-request thresholds.
+def _apply_overrides(backend: DetectorBackend, opts: PredictOptions) -> None:
+    """Per-request thresholds, mutated on the shared backend object.
 
-    Postprocessing happens inside the shared backend object, so overrides are
-    applied to it directly. Only safe because the batch worker is single-threaded;
-    a mismatched override affects at most the batch it rode in with.
+    Safe for the batched path (single-threaded worker). For ?batch=false a
+    concurrent request to the *same* backend could see another request's
+    override for one call - acceptable for a benchmarking switch.
     """
-    backend = STATE["backend"]
     if opts.conf is not None:
         backend.conf = opts.conf
     if opts.iou is not None:
@@ -169,19 +208,18 @@ def _apply_overrides(opts: PredictOptions) -> None:
         backend.max_det = opts.max_det
 
 
-def _reset_overrides() -> None:
-    backend = STATE["backend"]
-    backend.conf, backend.iou, backend.max_det = (
-        SETTINGS.conf,
-        SETTINGS.iou,
-        SETTINGS.max_det,
-    )
+def _reset_overrides(backend: DetectorBackend) -> None:
+    backend.conf, backend.iou, backend.max_det = SETTINGS.conf, SETTINGS.iou, SETTINGS.max_det
 
 
 def _to_response(
     detections: List[Detection],
     img: np.ndarray,
+    *,
+    backend_name: str,
+    model_path: str,
     batch_size: int,
+    batched: bool,
     infer_ms: float,
     total_ms: float,
     request_id: str,
@@ -191,13 +229,29 @@ def _to_response(
         num_detections=len(detections),
         image_width=int(img.shape[1]),
         image_height=int(img.shape[0]),
-        backend=STATE["backend"].name,
-        model=SETTINGS.model_path,
+        backend=backend_name,
+        model=model_path,
         inference_ms=round(infer_ms, 3),
         total_ms=round(total_ms, 3),
         batch_size=batch_size,
+        batched=batched,
         request_id=request_id,
     )
+
+
+async def _infer_unbatched(
+    backend: DetectorBackend, img: np.ndarray
+) -> tuple[List[Detection], float]:
+    """Skip the queue: one image straight through backend.predict()."""
+    loop = asyncio.get_running_loop()
+    t0 = time.perf_counter()
+    results = await loop.run_in_executor(None, backend.predict, [img])
+    infer_ms = (time.perf_counter() - t0) * 1000.0
+    dets = results[0] if results else []
+    for det in dets:
+        metrics.DETECTIONS.labels(class_name=det.class_name).inc()
+    metrics.INFERENCE_LATENCY.labels(backend=backend.name).observe(infer_ms / 1000.0)
+    return dets, infer_ms
 
 
 # ---------------- endpoints ----------------
@@ -210,18 +264,23 @@ async def predict(
     conf: Optional[float] = Form(default=None),
     iou: Optional[float] = Form(default=None),
     max_det: Optional[int] = Form(default=None),
-    predictor: BatchedPredictor = Depends(_get_predictor),
+    backend: Optional[str] = Query(default=None, description="Backend name; omit for the default."),
+    batch: bool = Query(default=True, description="False bypasses the dynamic batcher."),
 ) -> PredictResponse:
     """Detect objects in one image.
 
-    Accepts either `multipart/form-data` with a `file` field, or a JSON body
-    with `image_b64` / `image_url` (see PredictRequest).
+    Accepts `multipart/form-data` with a `file` field, or a JSON body with
+    `image_b64` / `image_url` (see PredictRequest).
     """
     request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
     t0 = time.perf_counter()
     metrics.INFLIGHT.inc()
+    bname = backend or STATE.get("default", "-")
 
     try:
+        name, be, predictor = _resolve(backend)
+        bname = name
+
         if file is not None:
             data = await file.read()
             options = PredictOptions(conf=conf, iou=iou, max_det=max_det)
@@ -242,51 +301,66 @@ async def predict(
             elif body.image_url:
                 data = await _fetch_url(body.image_url)
             else:
-                raise HTTPException(
-                    status_code=400, detail="one of image_b64 or image_url is required"
-                )
+                raise HTTPException(status_code=400, detail="one of image_b64 or image_url is required")
 
         img = _decode_image(data)
-        _apply_overrides(options)
+        _apply_overrides(be, options)
         try:
-            detections, batch_size, infer_ms = await predictor.predict(img)
+            if batch:
+                detections, batch_size, infer_ms = await predictor.predict(img)
+            else:
+                detections, infer_ms = await _infer_unbatched(be, img)
+                batch_size = 1
         finally:
-            _reset_overrides()
+            _reset_overrides(be)
 
         total_ms = (time.perf_counter() - t0) * 1000.0
-        metrics.REQUESTS.labels(endpoint="/predict", status="200").inc()
-        return _to_response(detections, img, batch_size, infer_ms, total_ms, request_id)
+        metrics.REQUESTS.labels(endpoint="/predict", backend=bname, status="200").inc()
+        return _to_response(
+            detections,
+            img,
+            backend_name=be.name,
+            model_path=SETTINGS.models[name],
+            batch_size=batch_size,
+            batched=batch,
+            infer_ms=infer_ms,
+            total_ms=total_ms,
+            request_id=request_id,
+        )
 
     except QueueOverflow as exc:
-        metrics.REQUESTS.labels(endpoint="/predict", status="503").inc()
+        metrics.REQUESTS.labels(endpoint="/predict", backend=bname, status="503").inc()
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except HTTPException as exc:
-        metrics.REQUESTS.labels(endpoint="/predict", status=str(exc.status_code)).inc()
+        metrics.REQUESTS.labels(endpoint="/predict", backend=bname, status=str(exc.status_code)).inc()
         raise
     except Exception as exc:  # noqa: BLE001
         log.exception("predict failed request_id=%s", request_id)
-        metrics.REQUESTS.labels(endpoint="/predict", status="500").inc()
+        metrics.REQUESTS.labels(endpoint="/predict", backend=bname, status="500").inc()
         raise HTTPException(status_code=500, detail="inference error") from exc
     finally:
         metrics.INFLIGHT.dec()
-        metrics.REQUEST_LATENCY.labels(endpoint="/predict").observe(time.perf_counter() - t0)
+        metrics.REQUEST_LATENCY.labels(endpoint="/predict", backend=bname).observe(time.perf_counter() - t0)
 
 
 @app.get("/healthz", response_model=HealthResponse)
 async def healthz() -> HealthResponse:
-    backend = STATE.get("backend")
+    registry = STATE.get("registry") or {}
     warm = bool(STATE.get("warm"))
-    if backend is None:
-        metrics.REQUESTS.labels(endpoint="/healthz", status="503").inc()
-        raise HTTPException(status_code=503, detail="model is not loaded yet")
+    if not registry:
+        metrics.REQUESTS.labels(endpoint="/healthz", backend="-", status="503").inc()
+        raise HTTPException(status_code=503, detail="models are not loaded yet")
 
-    metrics.REQUESTS.labels(endpoint="/healthz", status="200").inc()
+    default = STATE["default"]
+    default_be = registry[default]["backend"]
+    metrics.REQUESTS.labels(endpoint="/healthz", backend="-", status="200").inc()
     return HealthResponse(
         status="ok" if warm else "loading",
-        backend=backend.name,
-        model=SETTINGS.model_path,
+        backend=default,
+        backends={n: SETTINGS.models[n] for n in registry},
+        model=SETTINGS.models[default],
         imgsz=SETTINGS.imgsz,
-        classes=backend.class_names,
+        classes=default_be.class_names,
         warm=warm,
         uptime_s=round(time.time() - STATE["started_at"], 1),
     )
@@ -303,6 +377,6 @@ if __name__ == "__main__":  # pragma: no cover
     uvicorn.run(
         "app.main:app",
         host=os.getenv("HOST", "0.0.0.0"),
-        port=int(os.getenv("PORT", 8000)),
+        port=int(os.getenv("PORT", 7860)),
         workers=1,  # batching state is per-process; scale with replicas, not workers
     )
