@@ -39,9 +39,21 @@ models/*
 # --- reports: keep the committed summaries, drop the noise ---
 # reports/figures/*
 !reports/figures/.gitkeep
-reports/dataset.json
 reports/train_metrics.json
+
+# dataset.json and the 8 canonical accuracy runs back the numbers in README -
+# committed so the repo's own claims are checkable. Any OTHER accuracy.*.json
+# (stray/duplicate eval runs) stays ignored by the blanket rule below.
+!reports/dataset.json
 reports/accuracy.*.json
+!reports/accuracy.baseline.json
+!reports/accuracy.torch.v1.json
+!reports/accuracy.torch.v2.json
+!reports/accuracy.onnx.v1.fp32.json
+!reports/accuracy.onnx.v2.fp32.json
+!reports/accuracy.onnx.v1.int8.json
+!reports/accuracy.onnx.v2.int8.json
+!reports/accuracy.onnx.v1.fp16.json
 
 # --- os / editor ---
 .DS_Store

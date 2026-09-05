@@ -1,0 +1,62 @@
+{
+  "data_yaml": "/Users/kushagrapandya/Desktop/football-detect-serve/dataset/data.yaml",
+  "classes": {
+    "0": "ball",
+    "1": "goalkeeper",
+    "2": "player",
+    "3": "referee",
+    "4": "other"
+  },
+  "instances_per_class": {
+    "train": {
+      "2": 488110,
+      "3": 48304,
+      "0": 33066,
+      "1": 20283,
+      "4": 1446
+    },
+    "val": {
+      "2": 116862,
+      "3": 13242,
+      "0": 7865,
+      "1": 3824
+    },
+    "test": {
+      "2": 464689,
+      "3": 44957,
+      "1": 19459,
+      "0": 34129,
+      "4": 1313
+    }
+  },
+  "split_stats": {
+    "train": {
+      "images": 34500,
+      "labeled": 34500,
+      "empty_labels": 0,
+      "missing_labels": 0,
+      "boxes": 591209
+    },
+    "val": {
+      "images": 8250,
+      "labeled": 8250,
+      "empty_labels": 0,
+      "missing_labels": 0,
+      "boxes": 141793
+    },
+    "test": {
+      "images": 36750,
+      "labeled": 36750,
+      "empty_labels": 0,
+      "missing_labels": 0,
+      "boxes": 564547
+    }
+  },
+  "problems": {
+    "train": [
+      "SNMOT-065_000403.txt:2 degenerate box w=0.0 h=0.075926"
+    ],
+    "val": [],
+    "test": []
+  }
+}

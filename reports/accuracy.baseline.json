@@ -1,0 +1,63 @@
+{
+  "backend": "torch",
+  "weights": "models/yolo26n.pt",
+  "split": "val",
+  "num_images": 8250,
+  "conf": 0.001,
+  "nms_iou": 0.7,
+  "eval_seconds": 1311.7,
+  "overall": {
+    "map50": 0.19241023882583191,
+    "map75": 0.07972846153926873,
+    "map50_95": 0.0934961958345115,
+    "mean_precision_50": 0.021098589291796088,
+    "mean_recall_50": 0.28293225169181824
+  },
+  "per_class": {
+    "ball": {
+      "instances": 7865,
+      "predictions": 135063,
+      "precision_50": 0.010091586969792843,
+      "recall_50": 0.17329943180084229,
+      "ap50": 0.04291375055545042,
+      "ap75": 0.0046758648742683245,
+      "ap50_95": 0.013099004314839627
+    },
+    "goalkeeper": {
+      "instances": 3824,
+      "predictions": 0,
+      "precision_50": 0.0,
+      "recall_50": 0.0,
+      "ap50": 0.0,
+      "ap75": 0.0,
+      "ap50_95": 0.0
+    },
+    "player": {
+      "instances": 116862,
+      "predictions": 1507400,
+      "precision_50": 0.07430277019739151,
+      "recall_50": 0.9584295749664307,
+      "ap50": 0.7267272047478772,
+      "ap75": 0.3142379812828066,
+      "ap50_95": 0.3608857790232064
+    },
+    "referee": {
+      "instances": 13242,
+      "predictions": 0,
+      "precision_50": 0.0,
+      "recall_50": 0.0,
+      "ap50": 0.0,
+      "ap75": 0.0,
+      "ap50_95": 0.0
+    },
+    "other": {
+      "instances": 0,
+      "predictions": 0,
+      "precision_50": NaN,
+      "recall_50": NaN,
+      "ap50": NaN,
+      "ap75": NaN,
+      "ap50_95": NaN
+    }
+  }
+}

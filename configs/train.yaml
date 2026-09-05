@@ -18,6 +18,10 @@ model:
   task: detect
 
 train:
+  # v1/v2 were actually run as a raw model.train(...) call in a Kaggle notebook
+  # (device=[0,1], multi-GPU), not through scripts/train.py - this file documents
+  # that recipe for reference, but editing it alone won't affect a future Kaggle
+  # run unless that notebook cell is updated too.
   epochs: 100
   imgsz: 640
   batch: 16
@@ -42,20 +46,26 @@ train:
 
   # --- augmentation ---
   # Small fast-moving ball => keep scale/translate lively, keep flips cheap,
-  # avoid vertical flip (pitch footage is never upside down).
+  # avoid vertical flip (pitch footage is never upside down). Matches the
+  # actual v1/v2 Kaggle training call, not just a scaffold guess.
   hsv_h: 0.015
   hsv_s: 0.7
   hsv_v: 0.4
   degrees: 0.0
   translate: 0.1
-  scale: 0.5
+  scale: 0.7
   shear: 0.0
   perspective: 0.0
   flipud: 0.0
   fliplr: 0.5
+  bgr: 0.0
   mosaic: 1.0
   mixup: 0.0
+  cutmix: 0.0
   copy_paste: 0.0
+  copy_paste_mode: 0            # unused while copy_paste: 0.0; ultralytics default is "flip"
+  auto_augment: randomaugment
+  erasing: 0.4
   close_mosaic: 10             # disable mosaic for the final N epochs
 
 export:
