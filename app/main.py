@@ -13,12 +13,15 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import ipaddress
 import logging
 import os
+import socket
 import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 import cv2
 import numpy as np
@@ -165,16 +168,65 @@ def _decode_b64(payload: str) -> bytes:
         raise HTTPException(status_code=400, detail="image_b64 is not valid base64") from exc
 
 
+def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """True for anything that isn't a normal public address - loopback, private
+    ranges, link-local (this is what covers cloud metadata endpoints like
+    169.254.169.254), reserved, multicast, unspecified.
+    """
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
+def _validate_image_url(url: str) -> None:
+    """SSRF guard for `image_url`: only http(s), and refuse to fetch a hostname
+    that resolves to a private/internal/loopback address. Not exhaustive (DNS
+    rebinding between this check and the actual request, or a redirect to an
+    internal address, aren't covered) - this service isn't deployed publicly,
+    so this is defense in depth on an input that was previously unvalidated,
+    not a hardened boundary.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"unsupported URL scheme {parsed.scheme!r} (only http/https allowed)")
+    if not parsed.hostname:
+        raise ValueError("image_url has no hostname")
+
+    try:
+        addr_info = socket.getaddrinfo(parsed.hostname, None)
+    except socket.gaierror as exc:
+        raise ValueError(f"could not resolve host {parsed.hostname!r}: {exc}") from exc
+
+    for *_, sockaddr in addr_info:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if _is_blocked_ip(ip):
+            raise ValueError(f"refusing to fetch image_url: {ip} is a private/internal address")
+
+
 async def _fetch_url(url: str) -> bytes:
     import requests
 
+    try:
+        _validate_image_url(url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     def _get() -> bytes:
-        resp = requests.get(url, timeout=10, stream=True)
+        # allow_redirects=False: a validated hostname could still redirect
+        # somewhere internal - don't follow it rather than re-validate a chain.
+        resp = requests.get(url, timeout=10, stream=True, allow_redirects=False)
         resp.raise_for_status()
         return resp.raw.read(MAX_UPLOAD_BYTES + 1, decode_content=True)
 
     try:
         return await asyncio.get_running_loop().run_in_executor(None, _get)
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"could not fetch image_url: {exc}") from exc
 
