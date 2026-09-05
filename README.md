@@ -4,8 +4,9 @@ Football object detection (ball / goalkeeper / player / referee / other) — YOL
 on broadcast football footage, exported to ONNX, quantized to INT8, and served behind a
 batching FastAPI service with a live demo on Hugging Face Spaces.
 
-**Live demo:** https://huggingface.co/spaces/Kushagra77/football-detect-serve
-(Gradio, ZeroGPU — see [Live demo](#live-demo) for why its numbers won't match the table below)
+**[Live demo](https://huggingface.co/spaces/Kushagra77/football-detect-serve)** (Gradio,
+ZeroGPU — see the [Live demo](#live-demo) section below for why its numbers won't match
+the table below)
 
 The point of the repo is the path from checkpoint to endpoint: every optimization step has
 a gate, every backend is measured through the same code, and every number below came from
