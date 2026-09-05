@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Convert SoccerNet MOT-format tracking data into a YOLO detection dataset.
+"""Convert MOT-format tracking data into a YOLO detection dataset.
 
-Reads soccernet_data/{train,test}/SNMOT-XXX/{gt/gt.txt, gameinfo.ini, seqinfo.ini, img1/}
+Reads <src>/{train,test}/<sequence>/{gt/gt.txt, gameinfo.ini, seqinfo.ini, img1/}
 and writes dataset/{images,labels}/{train,val,test}/ + dataset/data.yaml.
 
 Class map (must match configs/train.yaml expected_classes):
@@ -11,17 +11,16 @@ Class map (must match configs/train.yaml expected_classes):
     3 referee
     4 other
 
-Split: SoccerNet ships train/ and test/ only, no val/. Splitting by frame would
+Split: the source ships train/ and test/ only, no val/. Splitting by frame would
 leak near-duplicate consecutive frames across the split, so every 5th train
-sequence (by sorted name) becomes val; the rest stay train. SoccerNet's test/
+sequence (by sorted name) becomes val; the rest stay train. The source's test/
 becomes YOLO test.
 
 Images are copied (not symlinked) so the dataset/ folder is self-contained and
 zippable for upload elsewhere (e.g. Kaggle). This duplicates ~17GB on disk.
 
 Usage:
-    python scripts/convert_mot_to_yolo.py
-    python scripts/convert_mot_to_yolo.py --src soccernet_data --out dataset
+    python scripts/convert_mot_to_yolo.py --src <path-to-raw-mot-data> --out dataset
 """
 from __future__ import annotations
 
@@ -146,7 +145,7 @@ def write_data_yaml(out_dir: Path) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--src", type=Path, default=ROOT / "soccernet_data")
+    ap.add_argument("--src", type=Path, required=True, help="raw MOT data root (train/, test/)")
     ap.add_argument("--out", type=Path, default=ROOT / "dataset")
     ap.add_argument("--val-every", type=int, default=5, help="hold out every Nth train sequence as val")
     args = ap.parse_args()

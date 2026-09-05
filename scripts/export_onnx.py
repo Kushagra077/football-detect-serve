@@ -10,6 +10,9 @@ Usage:
     python scripts/export_onnx.py --weights models/football_detection_v1.pt --quantize 16
     python scripts/export_onnx.py --weights models/football_detection_v1.pt --quantize 8 \
         --data dataset/data.yaml --split train --fraction 0.05
+
+--weights is required: there is no single "the" checkpoint once v1/v2 (or more)
+coexist, so guessing a default would just be a different stale default later.
 """
 from __future__ import annotations
 
@@ -29,7 +32,7 @@ sys.path.insert(0, str(ROOT))
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", type=Path, default=ROOT / "configs/train.yaml")
-    ap.add_argument("--weights", default=None, help="default: models/best.pt")
+    ap.add_argument("--weights", required=True, help="e.g. models/football_detection_v1.pt")
     ap.add_argument("--out", default=None, help="default: <weights stem>[_fp16|_int8].onnx next to the checkpoint")
     ap.add_argument("--imgsz", type=int, default=None)
     ap.add_argument("--opset", type=int, default=None)
@@ -56,7 +59,7 @@ def main() -> int:
         cfg = yaml.safe_load(fh)
     exp = cfg.get("export", {})
 
-    weights = (Path(args.weights).resolve() if args.weights else ROOT / "models/best.pt")
+    weights = Path(args.weights).resolve()
     if not weights.exists():
         print(f"[fail] weights not found: {weights}", file=sys.stderr)
         return 2

@@ -29,12 +29,6 @@ INFERENCE_LATENCY = Histogram(
     buckets=(0.002, 0.005, 0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 1.28),
     registry=REGISTRY,
 )
-PREPROCESS_LATENCY = Histogram(
-    "fds_preprocess_latency_seconds",
-    "Letterbox + normalize latency per batch.",
-    buckets=(0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1),
-    registry=REGISTRY,
-)
 DETECTIONS = Counter(
     "fds_detections_total",
     "Detections returned, by class.",
@@ -89,7 +83,6 @@ __all__ = [
     "REQUESTS",
     "REQUEST_LATENCY",
     "INFERENCE_LATENCY",
-    "PREPROCESS_LATENCY",
     "DETECTIONS",
     "QUEUE_WAIT",
     "BATCH_SIZE",

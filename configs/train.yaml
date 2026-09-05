@@ -2,7 +2,7 @@
 # Consumed by scripts/train.py, which passes `train` straight to ultralytics.
 
 dataset:
-  # SoccerNet MOT data converted via scripts/convert_mot_to_yolo.py into dataset/.
+  # MOT-format tracking data converted via scripts/convert_mot_to_yolo.py into dataset/.
   url: ""                      # zip URL of the dataset (unused; conversion is local)
   path: dataset                # dataset root, must contain data.yaml
   data_yaml: dataset/data.yaml
@@ -73,13 +73,6 @@ quantize:
   # measured 10-epoch drop was 0.027 (nano) / 0.064 (small). See PROGRESS.md.
   max_map_drop: 0.02
 
-serve:
-  backend: onnx                # torch | onnx
-  weights: models/football_detection_v1.onnx
-  imgsz: 640
-  conf: 0.25
-  iou: 0.45
-  max_det: 300
-  batch:
-    max_batch_size: 8
-    max_wait_ms: 15
+# Serving is env-var driven (MODELS=, DEFAULT_BACKEND=, ... - see app/main.py /
+# README's Serving section), not config-file driven. There used to be a `serve:`
+# block here; nothing ever read it, so it's gone rather than left to mislead.

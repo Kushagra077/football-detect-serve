@@ -5,7 +5,7 @@ Everything under the `train:` key is forwarded verbatim, so any ultralytics
 argument can be set in YAML without touching this file. CLI overrides win.
 
 Usage:
-    python scripts/train.py
+    python scripts/train.py --weights yolo26n.pt --out models/football_detection_v1.pt
     python scripts/train.py --config configs/train.yaml --set epochs=50 batch=8
     python scripts/train.py --resume
 """
@@ -43,6 +43,12 @@ def main() -> int:
     ap.add_argument("--config", type=Path, default=ROOT / "configs/train.yaml")
     ap.add_argument("--weights", default=None, help="override model.weights")
     ap.add_argument("--data", default=None, help="override dataset.data_yaml")
+    ap.add_argument(
+        "--out",
+        default=None,
+        help="copy the trained checkpoint here, e.g. models/football_detection_v1.pt "
+        "(default: models/<run name>.pt; no copy if omitted and run name is unset)",
+    )
     ap.add_argument("--resume", action="store_true")
     ap.add_argument(
         "--set",
@@ -90,11 +96,18 @@ def main() -> int:
     print(f"[ok  ] training finished; save_dir={save_dir}")
 
     if best.exists():
-        models_dir = ROOT / "models"
-        models_dir.mkdir(exist_ok=True)
-        target = models_dir / "best.pt"
-        shutil.copy2(best, target)
-        print(f"[ok  ] copied best weights -> {target.relative_to(ROOT)}")
+        if args.out:
+            target = Path(args.out)
+            if not target.is_absolute():
+                target = ROOT / target
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(best, target)
+            print(f"[ok  ] copied best weights -> {target.relative_to(ROOT)}")
+        else:
+            print(
+                f"[info] best weights at {best.relative_to(ROOT)} - not copied "
+                f"(pass --out models/football_detection_vN.pt to copy + name it)"
+            )
 
         metrics = getattr(results, "results_dict", None)
         if metrics:

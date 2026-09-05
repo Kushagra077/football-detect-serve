@@ -8,6 +8,10 @@
 # Both backends decode through ultralytics (YOLO(...).predict()), so torch IS
 # required now -- the old "ONNX graph only, no torch" premise is dead (see
 # PROGRESS.md, Step 7). CPU-only torch wheel keeps it to ~1 GB.
+#
+# 3.11 here is unrelated to pyproject.toml's ">=3.13" (that's the local dev venv
+# pin) and to the HF Space's 3.12 (its own default) - three separate runtimes,
+# each pinned independently on purpose, not a version drift to reconcile.
 FROM python:3.11-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \

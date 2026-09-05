@@ -16,7 +16,8 @@ Batching on/off delta: rerun each of the three with FDS_BATCH=false and compare
 the "img/s" (Requests/s in the CSV) and p95 columns against the batch=true runs.
 
 Env vars:
-    FDS_IMAGE    path to a real frame (default: a bundled dataset test image)
+    FDS_IMAGE    path to a real frame (default: first image found under
+                 dataset/images/test/)
     FDS_BACKEND  torch | onnx-fp32 | onnx-int8 (default: server's DEFAULT_BACKEND)
     FDS_BATCH    "true" | "false" (default: true)
 """
@@ -27,9 +28,19 @@ from pathlib import Path
 
 from locust import HttpUser, between, task
 
-IMAGE_PATH = Path(
-    os.getenv("FDS_IMAGE", "dataset/images/test/SNMOT-144_000513.jpg")
-)
+
+def _default_image() -> Path:
+    test_dir = Path("dataset/images/test")
+    for ext in ("*.jpg", "*.jpeg", "*.png"):
+        match = next(test_dir.glob(ext), None)
+        if match is not None:
+            return match
+    raise FileNotFoundError(
+        f"no image found under {test_dir} - set FDS_IMAGE=path/to/frame.jpg"
+    )
+
+
+IMAGE_PATH = Path(os.environ["FDS_IMAGE"]) if os.getenv("FDS_IMAGE") else _default_image()
 BACKEND = os.getenv("FDS_BACKEND", "").strip()
 BATCH = os.getenv("FDS_BATCH", "true").strip().lower() != "false"
 

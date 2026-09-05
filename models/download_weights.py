@@ -5,7 +5,7 @@ Set WEIGHTS_BASE_URL (or --base-url) to wherever your release artifacts live.
 
 Usage:
     python models/download_weights.py                    # all known artifacts
-    python models/download_weights.py best.onnx
+    python models/download_weights.py football_detection_v1.onnx
     python models/download_weights.py --base-url https://example.com/releases/v0.1
 """
 from __future__ import annotations
@@ -20,9 +20,12 @@ HERE = Path(__file__).resolve().parent
 
 # name -> optional sha256 ("" = skip verification)
 ARTIFACTS = {
-    "best.pt": "",
-    "best.onnx": "",
-    "best.int8.onnx": "",
+    "football_detection_v1.pt": "",
+    "football_detection_v1.onnx": "",
+    "football_detection_v1_int8.onnx": "",
+    "football_detection_v2.pt": "",
+    "football_detection_v2.onnx": "",
+    "football_detection_v2_int8.onnx": "",
 }
 
 

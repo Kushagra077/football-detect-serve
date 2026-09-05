@@ -7,10 +7,10 @@ torch models. Running torch / onnx-fp32 / onnx-int8 through the same evaluator i
 the only way the numbers are comparable.
 
 Usage:
-    python scripts/eval_map.py --backend torch --weights models/best.pt
-    python scripts/eval_map.py --backend onnx  --weights models/best.onnx
-    python scripts/eval_map.py --backend onnx  --weights models/best.int8.onnx \
-        --compare-to reports/accuracy.json --max-map-drop 0.02
+    python scripts/eval_map.py --backend torch --weights models/football_detection_v1.pt
+    python scripts/eval_map.py --backend onnx  --weights models/football_detection_v1.onnx
+    python scripts/eval_map.py --backend onnx  --weights models/football_detection_v1_int8.onnx \
+        --compare-to reports/accuracy.onnx.v1.fp32.json --max-map-drop 0.02
 """
 from __future__ import annotations
 

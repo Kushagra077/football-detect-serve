@@ -17,6 +17,11 @@ env/
 .ruff_cache/
 .ipynb_checkpoints/
 
+# lockfile only matters for local `uv sync`; requirements.txt is the real,
+# deliberately-unpinned install source for Docker/HF. Also carries stale
+# transitive-dependency names we don't want tracked.
+uv.lock
+
 # --- data & training artifacts ---
 data/
 dataset/

@@ -1,7 +1,7 @@
 # football-detect-serve
 
 Football object detection (ball / goalkeeper / player / referee / other) — YOLO26 trained
-on SoccerNet tracking data, exported to ONNX, quantized to INT8, and served behind a
+on broadcast football footage, exported to ONNX, quantized to INT8, and served behind a
 batching FastAPI service with a live demo on Hugging Face Spaces.
 
 **Live demo:** https://huggingface.co/spaces/Kushagra77/football-detect-serve
@@ -111,7 +111,7 @@ fighting over the same 4 pinned CPU threads. Zero request failures across all si
 ```
 configs/train.yaml           epochs, imgsz, batch, augmentation, expected class map
 scripts/prepare_data.py      verify class map, count instances, flag bad labels
-scripts/convert_mot_to_yolo.py   SoccerNet MOT gt.txt + gameinfo.ini -> YOLO format
+scripts/convert_mot_to_yolo.py   MOT gt.txt + gameinfo.ini -> YOLO format
 scripts/train.py              thin wrapper over ultralytics
 scripts/export_onnx.py        pt -> onnx, fp32/fp16/int8, static INT8 calibration
 scripts/eval_map.py           per-class mAP for ANY backend, one code path
@@ -133,12 +133,12 @@ pip install -r requirements.txt
 ## Pipeline
 
 ```bash
-# 1. dataset: SoccerNet MOT -> YOLO format, then verify + count instances
-python scripts/convert_mot_to_yolo.py
+# 1. dataset: convert MOT tracking labels to YOLO format, then verify + count instances
+python scripts/convert_mot_to_yolo.py --src <path-to-raw-mot-data>
 python scripts/prepare_data.py --skip-download --out dataset
 
 # 2. train (hyperparameters in configs/train.yaml)
-python scripts/train.py --weights yolo26n.pt
+python scripts/train.py --weights yolo26n.pt --out models/football_detection_v1.pt
 
 # 3. accuracy (one code path for every backend)
 python scripts/eval_map.py --backend torch --weights models/football_detection_v1.pt
@@ -265,9 +265,8 @@ comparison; the Space is for checking correctness and accuracy, not speed.
   NaN, yet both models emit thousands of `other` predictions per eval run — false
   positives that cost nothing in the current mAP. Worth a 4-class mAP alongside the
   5-class one, or folding `other` into `player`, in a future pass.
-- **One degenerate box in the source data**, not introduced by conversion:
-  `soccernet_data/train/SNMOT-065/gt/gt.txt` frame 403, track 3, has `w=0`. Left as-is
-  rather than patched around.
+- **One degenerate box in the raw source labels**, not introduced by conversion: one
+  sequence's `gt.txt` has a `w=0` row. Left as-is rather than patched around.
 - **Latency numbers are ARM (Apple M2), not x86.** The Docker service that produced them
   is local-only and never deployed to an x86 host, so the "INT8 is slower than fp32"
   result is plausibly an ARM/x86 kernel-tuning artifact (onnxruntime's INT8 kernels are
