@@ -83,13 +83,16 @@ those matches. `ball` is dominated by noise at this training length.
 - v1/v2 are **10-epoch**, v3 is **20-epoch** — all still deliberately short of the
   100-epoch `configs/train.yaml` target. Every number here moves with a real training run.
 
-### Latency (single-request, CPU, Apple M2 8-core, batch=1)
+### Latency (single-request, CPU, Apple M2 8-core, batch=1, v3 nano)
 
 | backend | p50 ms | p95 ms | p99 ms | img/s |
 |---|---|---|---|---|
-| torch | 23.7 | 24.5 | 26.3 | 41.9 |
-| onnx-fp32 | 16.2 | 16.5 | 19.7 | 61.2 |
-| onnx-int8 | 19.1 | 20.7 | 23.9 | 51.6 |
+| torch | 24.9 | 27.3 | 33.7 | 39.3 |
+| onnx-fp32 | 16.3 | 18.7 | 20.2 | 60.1 |
+| onnx-int8 | 19.0 | 21.0 | 23.0 | 51.9 |
+
+(Within run-to-run noise of the earlier v1 numbers — latency tracks the architecture, not
+the checkpoint, and v1/v3 are both yolo26n.)
 
 **onnx-fp32 is 1.5x torch, free** — no accuracy cost (see table above), just a different
 runtime. **onnx-int8 is *slower* than fp32 on this hardware** — Apple Silicon (ARM) lacks
