@@ -6,7 +6,9 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.141.1",
+    "gradio>=6.26.0",
     "kaggle>=2.2.4",
+    "locust>=2.46.4",
     "onnx>=1.22.0",
     "onnxruntime>=1.29.0",
     "onnxslim>=0.1.96",

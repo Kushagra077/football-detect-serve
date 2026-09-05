@@ -27,11 +27,15 @@ bench/
 reports/
 scripts/
 
-# training artifacts: the image only needs the exported graph
+# training artifacts. The torch backend now decodes through ultralytics, so the
+# served registry needs one .pt too -- keep v1, drop every other checkpoint.
 models/*.pt
+!models/football_detection_v1.pt
 models/*.part
 models/*.prep.onnx
 models/*.engine
+models/football_detection_v2*.onnx
+models/*_fp16.onnx
 !models/.gitkeep
 
 # --- media / scratch ---
