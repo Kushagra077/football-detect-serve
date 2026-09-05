@@ -256,25 +256,6 @@ comparison; the Space is for checking correctness and accuracy, not speed.
 | `reports/latency.json`, `figures/latency.png` | `benchmark.py` |
 | `reports/loadtest/*.csv`, `*.html` | Locust |
 
-## Dataset
-
-[SoccerNet tracking](https://www.soccer-net.org/) (MOT format: per-frame boxes, track IDs,
-`gameinfo.ini` role labels), converted to YOLO format by
-`scripts/convert_mot_to_yolo.py`. Licensed **CC BY 4.0** — attribution required for any
-use of the data:
-
-```bibtex
-@inproceedings{Cioppa2022SoccerNetTracking,
-  title     = {SoccerNet-Tracking: Multiple Object Tracking Dataset and Benchmark in Soccer Videos},
-  author    = {Cioppa, Anthony and Deliège, Adrien and Giancola, Silvio and Ghanem, Bernard and Van Droogenbroeck, Marc},
-  booktitle = {IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops (CVPRW)},
-  year      = {2022}
-}
-```
-
-*(Verify this against https://www.soccer-net.org/data before relying on it — bibliographic
-details weren't checked against a live source when this was written.)*
-
 ## Limitations
 
 - **10-epoch checkpoints.** `configs/train.yaml` targets 100 epochs; the models here are
