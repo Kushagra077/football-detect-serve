@@ -47,7 +47,7 @@ eval — a silent false-positive source that costs nothing in the current metric
 | backend | p50 ms | p95 ms | p99 ms | img/s |
 |---|---|---|---|---|
 | torch | 23.7 | 24.5 | 26.3 | 41.9 |
-| onnx-fp32 | 16.2 | 16.5 | — | 61.2 |
+| onnx-fp32 | 16.2 | 16.5 | 19.7 | 61.2 |
 | onnx-int8 | 19.1 | 20.7 | 23.9 | 51.6 |
 
 **onnx-fp32 is 1.5x torch, free** — no accuracy cost (see table above), just a different
@@ -139,7 +139,9 @@ python scripts/convert_mot_to_yolo.py --src <path-to-raw-mot-data>
 python scripts/prepare_data.py --skip-download --out dataset
 
 # 2. train (hyperparameters in configs/train.yaml)
-python scripts/train.py --weights yolo26n.pt --out models/football_detection_v1.pt
+# configs/train.yaml targets 100 epochs; the shipped v1/v2 checkpoints are a
+# deliberately under-trained 10-epoch run (see Results) - reproduce that with:
+python scripts/train.py --weights yolo26n.pt --out models/football_detection_v1.pt --set epochs=10
 
 # 3. accuracy (one code path for every backend)
 python scripts/eval_map.py --backend torch --weights models/football_detection_v1.pt
