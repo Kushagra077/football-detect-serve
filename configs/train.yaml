@@ -14,7 +14,7 @@ dataset:
     4: other
 
 model:
-  weights: yolov8n.pt          # starting checkpoint
+  weights: yolo26n.pt          # starting checkpoint
   task: detect
 
 train:
