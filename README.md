@@ -109,17 +109,17 @@ this service targets CPU.
 
 | concurrency | batching | RPS | p50 ms | p95 ms | p99 ms |
 |---|---|---|---|---|---|
-| 1 | on | 13.3 | 71 | 100 | 160 |
-| 1 | off | 22.4 | 41 | 63 | 81 |
-| 4 | on | 17.2 | 250 | 350 | 470 |
-| 4 | off | 25.1 | 150 | 210 | 230 |
-| 16 | on | 28.7 | 510 | 850 | 1200 |
-| 16 | off | 23.8 | 630 | 1100 | 1500 |
+| 1 | on | 13.6 | 72 | 95 | 120 |
+| 1 | off | 22.9 | 41 | 58 | 81 |
+| 4 | on | 16.0 | 260 | 420 | 630 |
+| 4 | off | 22.8 | 170 | 240 | 350 |
+| 16 | on | 30.9 | 500 | 610 | 1100 |
+| 16 | off | 23.5 | 670 | 1100 | 1300 |
 
 **The answer is "it depends on load," not a flat yes/no.** At concurrency 1 and 4,
 batching is pure overhead — most requests never find a batch partner inside the 15ms
 `MAX_WAIT_MS` window, so they pay that wait and then run solo anyway (nobatch wins on
-every axis). At concurrency 16, batching wins outright — higher throughput (28.7 vs 23.8
+every axis). At concurrency 16, batching wins outright — higher throughput (30.9 vs 23.5
 RPS) *and* lower latency at every percentile — because enough concurrent requests land
 inside the window to be grouped into one forward pass, which beats 16 single-image calls
 fighting over the same 4 pinned CPU threads. Zero request failures across all six runs.
@@ -288,10 +288,10 @@ container memory budget.
 
 ```bash
 locust -f bench/locustfile.py --headless -u 16 -r 16 -t 1m \
-    --host http://localhost:7860 --csv reports/loadtest/c16 --html reports/loadtest/c16.html
+    --host http://localhost:7860 --html reports/loadtest/c16_batch.html
 
 FDS_BATCH=false locust -f bench/locustfile.py --headless -u 16 -r 16 -t 1m \
-    --host http://localhost:7860 --csv reports/loadtest/c16_nobatch --html reports/loadtest/c16_nobatch.html
+    --host http://localhost:7860 --html reports/loadtest/c16_nobatch.html
 ```
 
 Or drop `--headless` for the interactive web UI at `localhost:8089`. `FDS_IMAGE` /
