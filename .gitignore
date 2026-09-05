@@ -32,7 +32,7 @@ models/*
 !models/download_weights.py
 
 # --- reports: keep the committed summaries, drop the noise ---
-reports/figures/*
+# reports/figures/*
 !reports/figures/.gitkeep
 reports/dataset.json
 reports/train_metrics.json
