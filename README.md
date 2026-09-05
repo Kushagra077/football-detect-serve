@@ -28,24 +28,36 @@ Two evaluations, because the two splits don't mean the same thing:
   3 matches total. So val shares stadiums/kits/cameras with training and reads
   **optimistically**. Kept for training-time monitoring, not as a headline result.
 
+Model lineage: **v1 nano** and **v2 small** are 10-epoch baselines. **v3 nano** is the
+current nano — 20 epochs, with `copy_paste=0.3` + `mixup=0.1` added specifically to help
+the rare, tiny ball class. v3 replaces v1; v1's numbers are kept as the before/after
+reference.
+
 #### test split — mAP50-95, torch, 36,750 images (the real number)
 
 | model | all\* | ball | goalkeeper | player | referee | other |
 |---|---|---|---|---|---|---|
-| v1 nano  | 0.344 | 0.090 | 0.377 | 0.571 | 0.435 | 0.245 |
-| v2 small | 0.391 | 0.131 | 0.484 | 0.618 | 0.492 | 0.231 |
+| v1 nano (10ep baseline) | 0.344 | 0.090 | 0.377 | 0.571 | 0.435 | 0.245 |
+| **v3 nano** | 0.365 | **0.111** | 0.435 | 0.594 | 0.459 | 0.225 |
+| **v2 small** | 0.391 | 0.131 | 0.484 | 0.618 | 0.492 | 0.231 |
 
 \* 5-class mean. `other` has 1,313 real instances here (none in val), so it's measurable —
-poorly (~0.24), but measurable.
+poorly (~0.23), but measurable.
+
+**v1 → v3**: ball AP **+23%** on this trustworthy split (0.090 → 0.111), every other real
+class up too — the `copy_paste`/`mixup` experiment worked. (Two things changed at once —
+20 epochs *and* the augmentation — so the ball gain is most likely the augmentation and
+the general uplift most likely the epochs, but they can't be cleanly separated.)
 
 #### val split — mAP50-95, 8,250 images (training-time monitoring only)
 
 | model | backend | all\* | ball | goalkeeper | player | referee |
 |---|---|---|---|---|---|---|
 | off-the-shelf COCO yolo26n (remapped) | torch | 0.093 | 0.013 | 0.000 | 0.361 | 0.000 |
-| **v1 nano** | torch | 0.427 | 0.069 | 0.475 | 0.603 | 0.560 |
-| v1 nano | onnx-fp32 | 0.427 | 0.069 | 0.475 | 0.603 | 0.560 |
-| v1 nano | onnx-int8 | 0.400 (−0.027) | 0.041 | 0.445 | 0.581 | 0.532 |
+| v1 nano (10ep baseline) | torch | 0.427 | 0.069 | 0.475 | 0.603 | 0.560 |
+| **v3 nano** | torch | 0.470 | 0.094 | 0.564 | 0.629 | 0.591 |
+| **v3 nano** | onnx-fp32 | 0.470 | 0.094 | 0.564 | 0.629 | 0.591 |
+| **v3 nano** | onnx-int8 | 0.436 (−0.033) | 0.080 | 0.527 | 0.587 | 0.552 |
 | **v2 small** | torch | 0.487 | 0.129 | 0.575 | 0.639 | 0.605 |
 | v2 small | onnx-fp32 | 0.487 | 0.129 | 0.575 | 0.639 | 0.605 |
 | v2 small | onnx-int8 | 0.423 (−0.064) | 0.069 | 0.497 | 0.577 | 0.549 |
@@ -55,18 +67,21 @@ val-only: they measure export fidelity and quantization cost, not generalization
 
 #### val vs test: the gap is leakage, and its shape confirms it
 
-Like-for-like (4-class mean, `other` excluded): v1 drops 0.427 → 0.369 (**−14%**),
-v2 drops 0.487 → 0.431 (**−11%**). The drop is concentrated in **goalkeeper and referee**
-(−0.09 to −0.12 each) while **player barely moves** (−0.02 to −0.03). That's the signature
-of match-level leakage, not random variance: players look the same in any match, but a
-keeper's kit and a ref's uniform are match-specific — memorizing them from training only
-helps on a val split that reuses those matches. `ball` is dominated by noise at this
-training length.
+Like-for-like (4-class mean, `other` excluded): v3 drops 0.470 → 0.400 (**−15%**),
+v1 0.427 → 0.369 (−14%), v2 0.487 → 0.431 (−11%). The drop is concentrated in
+**goalkeeper and referee** (−0.09 to −0.13 each) while **player barely moves**
+(−0.02 to −0.03). That's the signature of match-level leakage, not random variance:
+players look the same in any match, but a keeper's kit and a ref's uniform are
+match-specific — memorizing them from training only helps on a val split that reuses
+those matches. `ball` is dominated by noise at this training length.
 
-- ONNX-fp32 reproduces torch to <0.001 mAP per class (val) — the export path is faithful.
-- INT8 costs 0.027-0.064 mAP50-95 (val), ball taking the biggest relative hit (~40-46%).
-- Both checkpoints are **10-epoch, deliberately under-trained**. `configs/train.yaml`
-  targets 100 epochs; every number here will move with a real training run.
+- ONNX-fp32 reproduces torch to <0.001 mAP per class (val), across v1/v2/v3 — the export
+  path is faithful.
+- INT8 costs 0.03-0.06 mAP50-95 (val) — v1 −0.027, v2 −0.064, v3 −0.033. On v1 the ball
+  class took the biggest relative hit (~42%); on v3 it's only ~15%, so the
+  `copy_paste`/`mixup`-trained ball survives quantization noticeably better.
+- v1/v2 are **10-epoch**, v3 is **20-epoch** — all still deliberately short of the
+  100-epoch `configs/train.yaml` target. Every number here moves with a real training run.
 
 ### Latency (single-request, CPU, Apple M2 8-core, batch=1)
 
@@ -109,7 +124,7 @@ fighting over the same 4 pinned CPU threads. Zero request failures across all si
 ### The acceptance sentence
 
 > The ONNX runtime gave **1.5x** for free; INT8 bought **nothing** on this CPU (ARM) and
-> cost 0.027-0.064 mAP50-95 — the honest result of measuring rather than assuming, and a
+> cost 0.03-0.06 mAP50-95 — the honest result of measuring rather than assuming, and a
 > result that plausibly reverses on x86.
 
 ## Design rules
@@ -182,9 +197,9 @@ python scripts/prepare_data.py --skip-download --out dataset
 # NOTE: the actual v1/v2/v3 checkpoints were trained via a raw model.train(...)
 # call in a Kaggle notebook (multi-GPU), not through this script - configs/train.yaml
 # documents that recipe for reference, but editing it does not affect a Kaggle run.
-# scripts/train.py + this command is the from-scratch reproduction path:
-# configs/train.yaml targets 100 epochs; the shipped v1/v2 checkpoints are a
-# deliberately under-trained 10-epoch run (see Results) - reproduce that with:
+# scripts/train.py + this command is the from-scratch reproduction path.
+# configs/train.yaml targets 100 epochs; v1/v2 are 10-epoch, v3 is 20-epoch (see
+# Results). Approximate v1 with:
 python scripts/train.py --weights yolo26n.pt --out models/football_detection_v1.pt --set epochs=10
 
 # 3. accuracy (one code path for every backend)
@@ -305,9 +320,9 @@ comparison; the Space is for checking correctness and accuracy, not speed.
 
 ## Limitations
 
-- **10-epoch checkpoints.** `configs/train.yaml` targets 100 epochs; the models here are
-  intentionally under-trained placeholders that unblock the pipeline. Every number above
-  will move with a full training run.
+- **Under-trained checkpoints.** `configs/train.yaml` targets 100 epochs; v1/v2 are
+  10-epoch, v3 is 20-epoch. Intentionally short — enough to build and validate the whole
+  pipeline, not to maximize the model. Every number above will move with a full run.
 - **`val` overlaps with training at the match level.** The training pool contains only
   3 matches; `val` is carved from it by holding out every 5th sequence, so held-out clips
   share a stadium/kit/camera with training clips from the same game. The `test` split

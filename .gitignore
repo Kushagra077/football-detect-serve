@@ -56,6 +56,10 @@ reports/accuracy.*.json
 !reports/accuracy.onnx.v1.fp16.json
 !reports/accuracy.torch.v1.test.json
 !reports/accuracy.torch.v2.test.json
+!reports/accuracy.torch.v3.json
+!reports/accuracy.torch.v3.test.json
+!reports/accuracy.onnx.v3.fp32.json
+!reports/accuracy.onnx.v3.int8.json
 
 # --- os / editor ---
 .DS_Store
