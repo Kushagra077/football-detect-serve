@@ -1,5 +1,7 @@
 # football-detect-serve
 
+[![tests](https://github.com/Kushagra077/football-detect-serve/actions/workflows/tests.yml/badge.svg)](https://github.com/Kushagra077/football-detect-serve/actions/workflows/tests.yml)
+
 Football object detection (ball / goalkeeper / player / referee / other) — YOLO26 trained
 on broadcast football footage, exported to ONNX, quantized to INT8, and served behind a
 batching FastAPI service with a live demo on Hugging Face Spaces.
@@ -131,6 +133,19 @@ bench/locustfile.py            load test: concurrency x batching on/off
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+## Testing
+
+```bash
+pytest -v
+```
+
+`tests/` covers the pure logic — batching, metric math, label validation, the API's
+error paths — through a fake `DetectorBackend` (`tests/conftest.py`). No real model
+weights, ML deps (torch/ultralytics/onnxruntime), or dataset content are ever touched,
+so the suite runs in about a second and needs nothing beyond what's already installed
+for serving. Runs automatically on every push via GitHub Actions
+(`.github/workflows/tests.yml`) — that's the badge at the top of this file.
 
 ## Pipeline
 

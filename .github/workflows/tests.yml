@@ -1,0 +1,31 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # Deliberately NOT installing torch/ultralytics/onnxruntime here. Every
+      # test in tests/ uses a fake DetectorBackend (see tests/conftest.py) -
+      # none of them load a real model or touch real dataset content - so CI
+      # never needs the heavy ML deps. Keeps this fast (seconds, not minutes).
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            pytest pytest-asyncio httpx \
+            numpy pyyaml opencv-python-headless \
+            fastapi pydantic python-multipart prometheus-client
+
+      - name: Run tests
+        run: pytest -v

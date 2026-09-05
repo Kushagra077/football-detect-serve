@@ -30,3 +30,8 @@ locust
 # --- HF Space demo (app/gradio_app.py) ---
 gradio
 spaces          # ZeroGPU decorator; no-op outside the HF ZeroGPU host
+
+# --- tests (tests/) ---
+pytest
+pytest-asyncio
+httpx           # FastAPI's TestClient needs this installed separately
