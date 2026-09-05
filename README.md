@@ -82,6 +82,13 @@ those matches. `ball` is dominated by noise at this training length.
   `copy_paste`/`mixup`-trained ball survives quantization noticeably better.
 - v1/v2 are **10-epoch**, v3 is **20-epoch** — all still deliberately short of the
   100-epoch `configs/train.yaml` target. Every number here moves with a real training run.
+- **Evaluator cross-check** (`scripts/crosscheck_map.py`): running ultralytics' own
+  `YOLO.val()` on v3 lands ~0.015–0.02 mAP50-95 *lower* than `eval_map.py` on both val
+  and test — a small, consistent optimistic bias, same direction on every populated class,
+  no structural disagreement (`other`, the class most likely to expose an averaging bug,
+  agrees to 0.005). The offset is almost certainly ultralytics' `rect=True` letterboxing
+  vs the square resize the serving backends use. So the tables above read a touch high in
+  absolute terms; every *relative* comparison in this section is unaffected.
 
 ### Latency (single-request, CPU, Apple M2 8-core, batch=1, v3 nano)
 
@@ -142,7 +149,8 @@ fighting over the same 4 pinned CPU threads. Zero request failures across all si
 2. **One evaluator for every backend.** `scripts/eval_map.py` computes COCO-style AP
    itself for torch and ONNX alike through the shared `DetectorBackend.predict()`
    interface, so comparing backends never means comparing two different measurement
-   methods.
+   methods. It's cross-checked against ultralytics' own `YOLO.val()` via
+   `scripts/crosscheck_map.py` — they agree to ~0.02 mAP50-95 (see Accuracy).
 3. **Parity via the same evaluator, not a separate raw-tensor diff.** ONNX-vs-torch
    fidelity is checked by running `eval_map.py` on both and comparing per-class mAP to
    3 decimal places, not by diffing raw model output tensors (which YOLO26's end-to-end
@@ -161,6 +169,7 @@ scripts/convert_mot_to_yolo.py   MOT gt.txt + gameinfo.ini -> YOLO format
 scripts/train.py              thin wrapper over ultralytics
 scripts/export_onnx.py        pt -> onnx, fp32/fp16/int8, static INT8 calibration
 scripts/eval_map.py           per-class mAP for ANY backend, one code path
+scripts/crosscheck_map.py     eval_map.py vs ultralytics YOLO.val() - evaluator sanity check
 scripts/benchmark.py          single-request latency harness -> reports/latency.json
 app/main.py                   FastAPI: /predict /healthz /metrics, multi-backend registry
 app/batching.py                asyncio queue + max-wait window
@@ -207,6 +216,8 @@ python scripts/train.py --weights yolo26n.pt --out models/football_detection_v3.
 # 3. accuracy (one code path for every backend). --split test is the trustworthy number,
 #    --split val (default) is training-time monitoring only - see Results.
 python scripts/eval_map.py --backend torch --weights models/football_detection_v3.pt --split test
+# optional: sanity-check eval_map.py against ultralytics' own evaluator (~0.02 mAP agreement)
+python scripts/crosscheck_map.py --weights models/football_detection_v3.pt --split test --device mps
 
 # 4. export: fp32, fp16, int8 (int8 calibrates on the train split).
 #    Run --quantize none LAST - the quantized exports reuse the base filename (see below).
