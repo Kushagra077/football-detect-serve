@@ -300,3 +300,8 @@ comparison; the Space is for checking correctness and accuracy, not speed.
   with tiled high-res inference is out of scope here.
 - **Out of scope for this phase:** tracking, video input, team assignment, TensorRT, a
   fancier frontend than the Gradio demo.
+
+## License
+
+[MIT](LICENSE) — covers the code in this repository only. No training data or model
+weights are distributed here; see the repo's `.gitignore` and the Setup section above.
