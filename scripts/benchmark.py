@@ -10,7 +10,7 @@ HTTP load test in Step 8. This script isolates "how fast is the model itself".
 
 Usage:
     python scripts/benchmark.py                          # every model in models/
-    python scripts/benchmark.py --models models/football_detection_v1.onnx --runs 200
+    python scripts/benchmark.py --models models/football_detection_v3.onnx --runs 200
     python scripts/benchmark.py --batch-sizes 1 4 8 --omp-threads 4
 """
 from __future__ import annotations
@@ -202,7 +202,7 @@ def main() -> int:
     scfg = cfg.get("serve", {})
     models = discover_models(args.models)
     if not models:
-        print("[fail] no models found. Export first: python scripts/export_onnx.py --weights models/football_detection_v1.pt", file=sys.stderr)
+        print("[fail] no models found. Export first: python scripts/export_onnx.py --weights models/football_detection_v3.pt", file=sys.stderr)
         return 2
 
     images = sample_images(cfg, max(args.batch_sizes), imgsz)

@@ -5,7 +5,7 @@ Everything under the `train:` key is forwarded verbatim, so any ultralytics
 argument can be set in YAML without touching this file. CLI overrides win.
 
 Usage:
-    python scripts/train.py --weights yolo26n.pt --out models/football_detection_v1.pt
+    python scripts/train.py --weights yolo26n.pt --out models/football_detection_v3.pt
     python scripts/train.py --config configs/train.yaml --set epochs=50 batch=8
     python scripts/train.py --resume
 """
@@ -46,7 +46,7 @@ def main() -> int:
     ap.add_argument(
         "--out",
         default=None,
-        help="copy the trained checkpoint here, e.g. models/football_detection_v1.pt "
+        help="copy the trained checkpoint here, e.g. models/football_detection_v3.pt "
         "(default: models/<run name>.pt; no copy if omitted and run name is unset)",
     )
     ap.add_argument("--resume", action="store_true")

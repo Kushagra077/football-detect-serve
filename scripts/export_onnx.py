@@ -6,9 +6,9 @@ just means "don't add a second NMS op" — YOLO26's end2end head already emits f
 boxes. Parity with torch is checked via scripts/eval_map.py (onnx-fp32 mAP == torch).
 
 Usage:
-    python scripts/export_onnx.py --weights models/football_detection_v1.pt
-    python scripts/export_onnx.py --weights models/football_detection_v1.pt --quantize 16
-    python scripts/export_onnx.py --weights models/football_detection_v1.pt --quantize 8 \
+    python scripts/export_onnx.py --weights models/football_detection_v3.pt
+    python scripts/export_onnx.py --weights models/football_detection_v3.pt --quantize 16
+    python scripts/export_onnx.py --weights models/football_detection_v3.pt --quantize 8 \
         --data dataset/data.yaml --split train --fraction 0.05
 
 --weights is required: there is no single "the" checkpoint once v1/v2 (or more)
@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT))
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", type=Path, default=ROOT / "configs/train.yaml")
-    ap.add_argument("--weights", required=True, help="e.g. models/football_detection_v1.pt")
+    ap.add_argument("--weights", required=True, help="e.g. models/football_detection_v3.pt")
     ap.add_argument("--out", default=None, help="default: <weights stem>[_fp16|_int8].onnx next to the checkpoint")
     ap.add_argument("--imgsz", type=int, default=None)
     ap.add_argument("--opset", type=int, default=None)
@@ -71,7 +71,7 @@ def main() -> int:
 
     quantize = None if args.quantize == "none" else int(args.quantize)
     suffix = {None: "", 16: "_fp16", 8: "_int8"}[quantize]
-    # default output name tracks the weights file: football_detection_v1.pt -> football_detection_v1[_fp16|_int8].onnx
+    # default output name tracks the weights file: football_detection_v3.pt -> football_detection_v3[_fp16|_int8].onnx
     out_path = Path(args.out).resolve() if args.out else weights.with_name(weights.stem + suffix + ".onnx")
 
     export_kwargs = dict(

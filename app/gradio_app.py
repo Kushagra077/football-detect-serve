@@ -26,9 +26,9 @@ IOU = float(os.getenv("IOU", 0.45))
 
 # Same 3 files the local Docker service bakes in (PROGRESS.md Step 8).
 _MODELS: Dict[str, str] = {
-    "torch": "models/football_detection_v1.pt",
-    "onnx-fp32": "models/football_detection_v1.onnx",
-    "onnx-int8": "models/football_detection_v1_int8.onnx",
+    "torch": "models/football_detection_v3.pt",
+    "onnx-fp32": "models/football_detection_v3.onnx",
+    "onnx-int8": "models/football_detection_v3_int8.onnx",
 }
 
 # Loaded lazily per backend name and cached - a Space with 16GB RAM (free CPU

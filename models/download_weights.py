@@ -19,13 +19,18 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 # name -> optional sha256 ("" = skip verification)
+# v3 is the current nano (served everywhere), v2 the small; v1 kept for the
+# before/after baseline in the README.
 ARTIFACTS = {
-    "football_detection_v1.pt": "",
-    "football_detection_v1.onnx": "",
-    "football_detection_v1_int8.onnx": "",
+    "football_detection_v3.pt": "",
+    "football_detection_v3.onnx": "",
+    "football_detection_v3_int8.onnx": "",
     "football_detection_v2.pt": "",
     "football_detection_v2.onnx": "",
     "football_detection_v2_int8.onnx": "",
+    "football_detection_v1.pt": "",
+    "football_detection_v1.onnx": "",
+    "football_detection_v1_int8.onnx": "",
 }
 
 

@@ -5,7 +5,7 @@ load-test torch / onnx-fp32 / onnx-int8 side by side. Pick per request with
 `?backend=<name>`; omit it for DEFAULT_BACKEND. `?batch=false` bypasses the
 dynamic batcher (for the batching on/off throughput comparison).
 
-    MODELS="torch=models/football_detection_v1.pt,onnx-fp32=models/football_detection_v1.onnx,onnx-int8=models/football_detection_v1_int8.onnx" \
+    MODELS="torch=models/football_detection_v3.pt,onnx-fp32=models/football_detection_v3.onnx,onnx-int8=models/football_detection_v3_int8.onnx" \
     DEFAULT_BACKEND=onnx-fp32 uvicorn app.main:app --port 7860
 """
 from __future__ import annotations
@@ -47,9 +47,9 @@ log = logging.getLogger("app")
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", 10 * 1024 * 1024))
 
 _DEFAULT_MODELS = (
-    "torch=models/football_detection_v1.pt,"
-    "onnx-fp32=models/football_detection_v1.onnx,"
-    "onnx-int8=models/football_detection_v1_int8.onnx"
+    "torch=models/football_detection_v3.pt,"
+    "onnx-fp32=models/football_detection_v3.onnx,"
+    "onnx-int8=models/football_detection_v3_int8.onnx"
 )
 
 

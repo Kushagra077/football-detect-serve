@@ -52,10 +52,10 @@ COPY app ./app
 COPY configs ./configs
 
 # Bake in only the three files the default registry (main.py _DEFAULT_MODELS)
-# loads: torch + onnx-fp32 + onnx-int8 on v1. Mount over /app/models to swap.
-COPY models/football_detection_v1.pt ./models/
-COPY models/football_detection_v1.onnx ./models/
-COPY models/football_detection_v1_int8.onnx ./models/
+# loads: torch + onnx-fp32 + onnx-int8 on v3. Mount over /app/models to swap.
+COPY models/football_detection_v3.pt ./models/
+COPY models/football_detection_v3.onnx ./models/
+COPY models/football_detection_v3_int8.onnx ./models/
 
 RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /app
 USER appuser

@@ -199,24 +199,25 @@ python scripts/prepare_data.py --skip-download --out dataset
 # 2. train (hyperparameters in configs/train.yaml)
 # NOTE: the actual v1/v2/v3 checkpoints were trained via a raw model.train(...)
 # call in a Kaggle notebook (multi-GPU), not through this script - configs/train.yaml
-# documents that recipe for reference, but editing it does not affect a Kaggle run.
-# scripts/train.py + this command is the from-scratch reproduction path.
-# configs/train.yaml targets 100 epochs; v1/v2 are 10-epoch, v3 is 20-epoch (see
-# Results). Approximate v1 with:
-python scripts/train.py --weights yolo26n.pt --out models/football_detection_v1.pt --set epochs=10
+# documents the current (v3) recipe for reference, but editing it does not affect a
+# Kaggle run. scripts/train.py + this command is the from-scratch reproduction path.
+# configs/train.yaml targets 100 epochs; v3 is a 20-epoch run.
+python scripts/train.py --weights yolo26n.pt --out models/football_detection_v3.pt --set epochs=20
 
-# 3. accuracy (one code path for every backend)
-python scripts/eval_map.py --backend torch --weights models/football_detection_v1.pt
+# 3. accuracy (one code path for every backend). --split test is the trustworthy number,
+#    --split val (default) is training-time monitoring only - see Results.
+python scripts/eval_map.py --backend torch --weights models/football_detection_v3.pt --split test
 
-# 4. export: fp32, fp16, int8 (int8 calibrates on the train split)
-python scripts/export_onnx.py --weights models/football_detection_v1.pt --quantize none
-python scripts/export_onnx.py --weights models/football_detection_v1.pt --quantize 16
-python scripts/export_onnx.py --weights models/football_detection_v1.pt --quantize 8 \
+# 4. export: fp32, fp16, int8 (int8 calibrates on the train split).
+#    Run --quantize none LAST - the quantized exports reuse the base filename (see below).
+python scripts/export_onnx.py --weights models/football_detection_v3.pt --quantize 16
+python scripts/export_onnx.py --weights models/football_detection_v3.pt --quantize 8 \
     --split train --fraction 0.01
+python scripts/export_onnx.py --weights models/football_detection_v3.pt --quantize none
 
 # 5. GATE — onnx-fp32 must match torch mAP to ~0.001/class; int8 drop must be sane, not collapsed
-python scripts/eval_map.py --backend onnx --weights models/football_detection_v1.onnx
-python scripts/eval_map.py --backend onnx --weights models/football_detection_v1_int8.onnx
+python scripts/eval_map.py --backend onnx --weights models/football_detection_v3.onnx
+python scripts/eval_map.py --backend onnx --weights models/football_detection_v3_int8.onnx
 
 # 6. single-request latency across backends and batch sizes
 python scripts/benchmark.py
@@ -225,7 +226,7 @@ python scripts/benchmark.py
 ## Serving
 
 ```bash
-MODELS="torch=models/football_detection_v1.pt,onnx-fp32=models/football_detection_v1.onnx,onnx-int8=models/football_detection_v1_int8.onnx" \
+MODELS="torch=models/football_detection_v3.pt,onnx-fp32=models/football_detection_v3.onnx,onnx-int8=models/football_detection_v3_int8.onnx" \
 DEFAULT_BACKEND=onnx-fp32 uvicorn app.main:app --host 0.0.0.0 --port 7860
 ```
 
@@ -234,7 +235,7 @@ can demo and load-test torch/onnx-fp32/onnx-int8 side by side without redeployin
 
 | Env var | Default | Notes |
 | --- | --- | --- |
-| `MODELS` | torch+onnx-fp32+onnx-int8 on v1 | `name=path,name=path,...` |
+| `MODELS` | torch+onnx-fp32+onnx-int8 on v3 | `name=path,name=path,...` |
 | `DEFAULT_BACKEND` | first entry in `MODELS` | used when `?backend=` is omitted |
 | `DEVICE` | `cpu` | |
 | `IMGSZ` / `CONF` / `IOU` / `MAX_DET` | `640` / `0.25` / `0.45` / `300` | postprocess defaults, overridable per request |
