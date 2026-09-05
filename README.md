@@ -139,6 +139,10 @@ python scripts/convert_mot_to_yolo.py --src <path-to-raw-mot-data>
 python scripts/prepare_data.py --skip-download --out dataset
 
 # 2. train (hyperparameters in configs/train.yaml)
+# NOTE: the actual v1/v2/v3 checkpoints were trained via a raw model.train(...)
+# call in a Kaggle notebook (multi-GPU), not through this script - configs/train.yaml
+# documents that recipe for reference, but editing it does not affect a Kaggle run.
+# scripts/train.py + this command is the from-scratch reproduction path:
 # configs/train.yaml targets 100 epochs; the shipped v1/v2 checkpoints are a
 # deliberately under-trained 10-epoch run (see Results) - reproduce that with:
 python scripts/train.py --weights yolo26n.pt --out models/football_detection_v1.pt --set epochs=10
