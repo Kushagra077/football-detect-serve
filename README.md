@@ -92,8 +92,9 @@ fighting over the same 4 pinned CPU threads. Zero request failures across all si
    and `onnx_backend.py` both call ultralytics' own `YOLO(...).predict()`, which knows how
    to decode YOLO26's end-to-end (NMS-free, top-k) head — a hand-rolled decoder assuming
    the classic dense anchor-grid output silently produced garbage on this architecture
-   (see git history / old PROGRESS.md entries if curious). `app/backends/base.py` keeps
-   `letterbox()`/`preprocess()` as generic utilities, not on the hot path.
+   (see git history / old PROGRESS.md entries if curious). `app/backends/base.py` now
+   holds only the shared `Detection`/`to_detections()` contract both backends convert
+   ultralytics' output through — no manual letterbox/decode step exists in this repo.
 2. **One evaluator for every backend.** `scripts/eval_map.py` computes COCO-style AP
    itself for torch and ONNX alike through the shared `DetectorBackend.predict()`
    interface, so comparing backends never means comparing two different measurement

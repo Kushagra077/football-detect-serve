@@ -13,7 +13,7 @@ from typing import List, Optional, Sequence
 
 import numpy as np
 
-from app.backends.base import DetectorBackend, Detection
+from app.backends.base import DetectorBackend, Detection, to_detections
 
 
 class OnnxBackend(DetectorBackend):
@@ -79,29 +79,10 @@ class OnnxBackend(DetectorBackend):
             device=self.device,
             verbose=False,
         )
-        return [_to_detections(r, self.class_names) for r in results]
+        return [to_detections(r, self.class_names) for r in results]
 
     def close(self) -> None:
         self._yolo = None
-
-
-def _to_detections(result, class_names: dict) -> List[Detection]:
-    dets: List[Detection] = []
-    for box in result.boxes:
-        x1, y1, x2, y2 = box.xyxy[0].tolist()
-        cls_id = int(box.cls[0])
-        dets.append(
-            Detection(
-                x1=x1,
-                y1=y1,
-                x2=x2,
-                y2=y2,
-                score=float(box.conf[0]),
-                class_id=cls_id,
-                class_name=class_names.get(cls_id, str(cls_id)),
-            )
-        )
-    return dets
 
 
 def _detect_precision(path: Path) -> str:

@@ -3,16 +3,15 @@
 Everything downstream (serving, eval, benchmark) talks only to this interface, so
 torch / onnx-fp32 / onnx-int8 are driven identically. Each backend's predict()
 delegates to ultralytics, which owns preprocess + inference + decode for whatever
-head format the model uses. letterbox()/preprocess() below are kept as generic
-image utilities (calibration, a future custom decoder) but are not on the hot path.
+head format the model uses - there is no manual letterbox/preprocess step here;
+an earlier one was removed as dead code once both backends moved to ultralytics.
 """
 from __future__ import annotations
 
 import abc
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 
-import cv2
 import numpy as np
 
 
@@ -29,34 +28,26 @@ class Detection:
     class_name: str
 
 
-@dataclass
-class LetterboxMeta:
-    """Everything needed to map letterboxed coords back to the source image."""
-
-    ratio: float
-    pad_w: float
-    pad_h: float
-    orig_h: int
-    orig_w: int
-
-
-def letterbox(
-    img: np.ndarray, imgsz: int = 640, color: Tuple[int, int, int] = (114, 114, 114)
-) -> Tuple[np.ndarray, LetterboxMeta]:
-    """Resize preserving aspect ratio, pad to a square imgsz x imgsz canvas."""
-    h, w = img.shape[:2]
-    ratio = min(imgsz / h, imgsz / w)
-    new_w, new_h = int(round(w * ratio)), int(round(h * ratio))
-    if (new_w, new_h) != (w, h):
-        interp = cv2.INTER_LINEAR if ratio > 1 else cv2.INTER_AREA
-        img = cv2.resize(img, (new_w, new_h), interpolation=interp)
-
-    pad_w = (imgsz - new_w) / 2
-    pad_h = (imgsz - new_h) / 2
-    top, bottom = int(round(pad_h - 0.1)), int(round(pad_h + 0.1))
-    left, right = int(round(pad_w - 0.1)), int(round(pad_w + 0.1))
-    img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)
-    return img, LetterboxMeta(ratio=ratio, pad_w=pad_w, pad_h=pad_h, orig_h=h, orig_w=w)
+def to_detections(result, class_names: Dict[int, str]) -> List[Detection]:
+    """Convert one ultralytics Result -> our Detection list. Shared by every backend
+    so torch/onnx-fp32/onnx-int8 can't silently diverge in how they read boxes out.
+    """
+    dets: List[Detection] = []
+    for box in result.boxes:
+        x1, y1, x2, y2 = box.xyxy[0].tolist()
+        cls_id = int(box.cls[0])
+        dets.append(
+            Detection(
+                x1=x1,
+                y1=y1,
+                x2=x2,
+                y2=y2,
+                score=float(box.conf[0]),
+                class_id=cls_id,
+                class_name=class_names.get(cls_id, str(cls_id)),
+            )
+        )
+    return dets
 
 
 class DetectorBackend(abc.ABC):
@@ -100,22 +91,6 @@ class DetectorBackend(abc.ABC):
     @abc.abstractmethod
     def predict(self, images: Sequence[np.ndarray]) -> List[List[Detection]]:
         """BGR uint8 HWC images -> per-image detections in original coordinates."""
-
-    # ---------------- generic image utilities (not on the predict path) ----------------
-
-    def preprocess(self, images: Sequence[np.ndarray]) -> Tuple[np.ndarray, List[LetterboxMeta]]:
-        """BGR uint8 HWC list -> NCHW float32 [0,1] batch + letterbox metadata.
-
-        Not used by predict() (ultralytics does its own preprocessing); kept for
-        calibration and any future raw-tensor tooling.
-        """
-        tensors, metas = [], []
-        for img in images:
-            padded, meta = letterbox(img, self.imgsz)
-            rgb = cv2.cvtColor(padded, cv2.COLOR_BGR2RGB)
-            tensors.append(rgb.transpose(2, 0, 1).astype(np.float32) / 255.0)
-            metas.append(meta)
-        return np.ascontiguousarray(np.stack(tensors, axis=0)), metas
 
 
 def build_backend(
