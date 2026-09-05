@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -30,15 +31,25 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-# where eval_map.py writes its per-weights report, by split
-DEFAULT_REPORT = {
-    "val": "reports/accuracy.torch.{stem}.json",
-    "test": "reports/accuracy.torch.{stem}.test.json",
-}
-
 
 def resolve(path: Path) -> Path:
     return path if path.is_absolute() else ROOT / path
+
+
+def find_baseline(weights_stem: str, split: str) -> Path | None:
+    """Locate the eval_map.py report for these weights + split.
+
+    Reports are tagged either by the full weights stem (football_detection_v3)
+    or the short model tag (v3); val reports have no suffix, test reports carry
+    `.test`. Return the first candidate that exists.
+    """
+    suffix = "" if split == "val" else f".{split}"
+    short = re.sub(r"^football_detection_", "", weights_stem)
+    for tag in (weights_stem, short):
+        cand = ROOT / f"reports/accuracy.torch.{tag}{suffix}.json"
+        if cand.exists():
+            return cand
+    return None
 
 
 def main() -> int:
@@ -74,13 +85,10 @@ def main() -> int:
         return 2
 
     # locate the eval_map.py report to compare against
-    baseline_path: Path | None = None
     if args.compare_to:
-        baseline_path = resolve(Path(args.compare_to))
+        baseline_path: Path | None = resolve(Path(args.compare_to))
     else:
-        guess = DEFAULT_REPORT.get(args.split, "").format(stem=weights.stem)
-        if guess and resolve(Path(guess)).exists():
-            baseline_path = resolve(Path(guess))
+        baseline_path = find_baseline(weights.stem, args.split)
 
     names = yaml.safe_load(data_yaml.read_text()).get("names", {})
     if isinstance(names, list):
