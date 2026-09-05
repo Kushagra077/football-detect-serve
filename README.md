@@ -18,11 +18,31 @@ running that code, not from a spec sheet.
 
 ## Results
 
-### Accuracy (mAP50-95, val split, 8,250 images)
+### Accuracy
 
-| model | backend | all | ball | goalkeeper | player | referee |
+Two evaluations, because the two splits don't mean the same thing:
+
+- **`test`** — 3 matches that appear **nowhere** in training (different stadiums, teams,
+  kits, camera setups). This is the trustworthy generalization number.
+- **`val`** — carved out of the training pool (every 5th sequence), which only contains
+  3 matches total. So val shares stadiums/kits/cameras with training and reads
+  **optimistically**. Kept for training-time monitoring, not as a headline result.
+
+#### test split — mAP50-95, torch, 36,750 images (the real number)
+
+| model | all\* | ball | goalkeeper | player | referee | other |
 |---|---|---|---|---|---|---|
-| off-the-shelf COCO yolo26n (remapped classes) | torch | 0.093 | 0.013 | 0.000 | 0.361 | 0.000 |
+| v1 nano  | 0.344 | 0.090 | 0.377 | 0.571 | 0.435 | 0.245 |
+| v2 small | 0.391 | 0.131 | 0.484 | 0.618 | 0.492 | 0.231 |
+
+\* 5-class mean. `other` has 1,313 real instances here (none in val), so it's measurable —
+poorly (~0.24), but measurable.
+
+#### val split — mAP50-95, 8,250 images (training-time monitoring only)
+
+| model | backend | all\* | ball | goalkeeper | player | referee |
+|---|---|---|---|---|---|---|
+| off-the-shelf COCO yolo26n (remapped) | torch | 0.093 | 0.013 | 0.000 | 0.361 | 0.000 |
 | **v1 nano** | torch | 0.427 | 0.069 | 0.475 | 0.603 | 0.560 |
 | v1 nano | onnx-fp32 | 0.427 | 0.069 | 0.475 | 0.603 | 0.560 |
 | v1 nano | onnx-int8 | 0.400 (−0.027) | 0.041 | 0.445 | 0.581 | 0.532 |
@@ -30,19 +50,23 @@ running that code, not from a spec sheet.
 | v2 small | onnx-fp32 | 0.487 | 0.129 | 0.575 | 0.639 | 0.605 |
 | v2 small | onnx-int8 | 0.423 (−0.064) | 0.069 | 0.497 | 0.577 | 0.549 |
 
-The `other` class (sideline staff etc.) has **0 instances in the val split**, so its AP is
-NaN and unvalidatable even though both models still emit ~1-4k `other` predictions per
-eval — a silent false-positive source that costs nothing in the current metric. See
-[Limitations](#limitations).
+\* 4-class mean — `other` has 0 instances in val, so it's excluded. ONNX/INT8 rows are
+val-only: they measure export fidelity and quantization cost, not generalization.
 
-- ONNX-fp32 reproduces torch to <0.001 mAP per class — the export path is faithful, not
-  approximate.
-- INT8 costs 0.027-0.064 mAP50-95 depending on model size, with the ball class taking the
-  biggest relative hit (~40-46%) since it already has the fewest instances and smallest
-  boxes.
-- Both checkpoints are **10-epoch, deliberately under-trained** — the point right now is
-  the full pipeline working end-to-end, not a maximized model. `configs/train.yaml` is set
-  for 100 epochs; the numbers above will move if you train it out.
+#### val vs test: the gap is leakage, and its shape confirms it
+
+Like-for-like (4-class mean, `other` excluded): v1 drops 0.427 → 0.369 (**−14%**),
+v2 drops 0.487 → 0.431 (**−11%**). The drop is concentrated in **goalkeeper and referee**
+(−0.09 to −0.12 each) while **player barely moves** (−0.02 to −0.03). That's the signature
+of match-level leakage, not random variance: players look the same in any match, but a
+keeper's kit and a ref's uniform are match-specific — memorizing them from training only
+helps on a val split that reuses those matches. `ball` is dominated by noise at this
+training length.
+
+- ONNX-fp32 reproduces torch to <0.001 mAP per class (val) — the export path is faithful.
+- INT8 costs 0.027-0.064 mAP50-95 (val), ball taking the biggest relative hit (~40-46%).
+- Both checkpoints are **10-epoch, deliberately under-trained**. `configs/train.yaml`
+  targets 100 epochs; every number here will move with a real training run.
 
 ### Latency (single-request, CPU, Apple M2 8-core, batch=1)
 
@@ -284,10 +308,16 @@ comparison; the Space is for checking correctness and accuracy, not speed.
 - **10-epoch checkpoints.** `configs/train.yaml` targets 100 epochs; the models here are
   intentionally under-trained placeholders that unblock the pipeline. Every number above
   will move with a full training run.
-- **The `other` class is unvalidatable.** Zero instances in the val split means its AP is
-  NaN, yet both models emit thousands of `other` predictions per eval run — false
-  positives that cost nothing in the current mAP. Worth a 4-class mAP alongside the
-  5-class one, or folding `other` into `player`, in a future pass.
+- **`val` overlaps with training at the match level.** The training pool contains only
+  3 matches; `val` is carved from it by holding out every 5th sequence, so held-out clips
+  share a stadium/kit/camera with training clips from the same game. The `test` split
+  (3 entirely separate matches) doesn't have this problem — it's the number to trust, and
+  the [Accuracy](#accuracy) section reports both so the ~11-14% gap is visible rather than
+  hidden. A cleaner fix (hold out a whole match for val) isn't really available with only
+  3 training matches — this is a dataset-size constraint, not just a split bug.
+- **The `other` class is thinly validated.** It has 0 instances in `val` (AP undefined
+  there) and only 1,313 in `test` — where it scores ~0.24 and both models over-predict it.
+  Worth a 4-class mAP alongside the 5-class one, or folding `other` into `player`, later.
 - **One degenerate box in the raw source labels**, not introduced by conversion: one
   sequence's `gt.txt` has a `w=0` row. Left as-is rather than patched around.
 - **Latency numbers are ARM (Apple M2), not x86.** The Docker service that produced them
