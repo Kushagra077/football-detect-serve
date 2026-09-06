@@ -83,13 +83,19 @@ export:
   simplify: true
 
 quantize:
-  # int8 calibration is done by ultralytics (ORT static quant) at export time:
-  #   --split train --fraction 0.01  (~345 of 34.5k train images)
+  # int8 calibration is done by ultralytics (ORT static quant) at export time,
+  # against scripts/build_calibration_set.py's output (345 images, stratified
+  # across all 46 training sequences), NOT a raw --fraction slice of --split
+  # train: ultralytics sorts that list alphabetically before slicing, which -
+  # given our <sequence>_<frame>.jpg naming - took the first ~345 frames of
+  # one ~14s clip. See scripts/build_calibration_set.py's docstring.
   #
   # No max_map_drop gate is declared here yet. Measured drops so far (v1 nano
-  # 0.027, v2 small 0.064, v3 nano 0.033) are from short (10-20 epoch) runs, so
-  # a target picked now would just be reverse-engineered from numbers we
-  # already know fail it. scripts/eval_map.py's --compare-to/--max-map-drop
+  # 0.027, v2 small 0.064, v3 nano 0.033) are from BEFORE this fix (single-clip
+  # calibration) and from short (10-20 epoch) runs - both need re-measuring
+  # against the new calibration set before either is trustworthy. A target
+  # picked now would just be reverse-engineered from numbers we already know
+  # are questionable. scripts/eval_map.py's --compare-to/--max-map-drop
   # gate still works (pass a value on the CLI) - this repo just isn't
   # publishing a specific bar as "the" gate until a fully-trained model's
   # numbers justify setting one for real.

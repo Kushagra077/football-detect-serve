@@ -167,10 +167,15 @@ serializing behind the same lock. Zero request failures across all six runs.
    fidelity is checked by running `eval_map.py` on both and comparing per-class mAP to
    3 decimal places, not by diffing raw model output tensors (which YOLO26's end-to-end
    head format makes brittle across backends).
-4. **Quantize against real data.** `scripts/export_onnx.py --quantize 8` calibrates INT8
-   on a sample of the *train* split (`--split train --fraction 0.01`, ~345 images) run
-   through the real preprocessing path, and the result is a measured mAP drop, not an
-   assumption.
+4. **Quantize against real data - deliberately sampled, not just sliced.** `--quantize 8`
+   calibrates INT8 on 345 real training images run through the real preprocessing path,
+   picked by `scripts/build_calibration_set.py` to spread evenly across all 46 training
+   sequences. That script exists because the naive version (`--split train --fraction
+   0.01`) doesn't randomly sample anything: ultralytics sorts the file list alphabetically
+   before slicing a fraction, and with `<sequence>_<frame>.jpg` filenames that's the first
+   ~345 frames of whichever sequence sorts first - one ~14-second clip, one stadium, one
+   lighting condition. Either way the result is a measured mAP drop, not an assumption -
+   but only the stratified sample is a calibration set that means anything.
 
 ## Layout
 
@@ -179,6 +184,7 @@ configs/train.yaml           epochs, imgsz, batch, augmentation, expected class 
 scripts/prepare_data.py      verify class map, count instances, flag bad labels
 scripts/convert_mot_to_yolo.py   MOT gt.txt + gameinfo.ini -> YOLO format
 scripts/train.py              thin wrapper over ultralytics
+scripts/build_calibration_set.py  shuffled, cross-sequence image list for INT8 calibration
 scripts/export_onnx.py        pt -> onnx, fp32/fp16/int8, static INT8 calibration
 scripts/eval_map.py           per-class mAP for ANY backend, one code path
 scripts/crosscheck_map.py     eval_map.py vs ultralytics YOLO.val() - evaluator sanity check
@@ -239,11 +245,15 @@ python scripts/eval_map.py --backend torch --weights models/football_detection_v
 # optional: sanity-check eval_map.py against ultralytics' own evaluator (~0.02 mAP agreement)
 python scripts/crosscheck_map.py --weights models/football_detection_v3.pt --split test --device mps
 
-# 4. export: fp32, fp16, int8 (int8 calibrates on the train split).
+# 4. export: fp32, fp16, int8. int8 calibrates on a curated, shuffled,
+#    cross-sequence sample - NOT `--split train --fraction 0.01` directly,
+#    which slices ultralytics' alphabetically-sorted file list and ends up as
+#    the first ~345 frames of one clip (see build_calibration_set.py).
 #    Run --quantize none LAST - the quantized exports reuse the base filename (see below).
+python scripts/build_calibration_set.py
 python scripts/export_onnx.py --weights models/football_detection_v3.pt --quantize 16
 python scripts/export_onnx.py --weights models/football_detection_v3.pt --quantize 8 \
-    --split train --fraction 0.01
+    --data dataset/calib_data.yaml --split train --fraction 1.0
 python scripts/export_onnx.py --weights models/football_detection_v3.pt --quantize none
 
 # 5. GATE — onnx-fp32 must match torch mAP to ~0.001/class; int8 drop must be sane, not collapsed
