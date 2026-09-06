@@ -98,8 +98,25 @@ class DetectorBackend(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def predict(self, images: Sequence[np.ndarray]) -> List[List[Detection]]:
-        """BGR uint8 HWC images -> per-image detections in original coordinates."""
+    def predict(
+        self,
+        images: Sequence[np.ndarray],
+        *,
+        conf: Optional[float] = None,
+        iou: Optional[float] = None,
+        max_det: Optional[int] = None,
+    ) -> List[List[Detection]]:
+        """BGR uint8 HWC images -> per-image detections in original coordinates.
+
+        conf/iou/max_det override self.conf/self.iou/self.max_det for this call
+        only (None = use the backend's own default). Implementations must NOT
+        write these onto self - per-request overrides used to be applied by
+        mutating the shared backend object, which was a real bug: concurrent
+        requests could stomp each other's thresholds, or a coalesced batch could
+        run every image in it under whichever request's override landed last.
+        Callers that need distinct thresholds in one batch (see BatchedPredictor)
+        group same-threshold jobs together and call predict() once per group.
+        """
 
 
 def build_backend(

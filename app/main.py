@@ -245,25 +245,6 @@ def _resolve(name: Optional[str]) -> tuple[str, DetectorBackend, BatchedPredicto
     return key, entry["backend"], entry["predictor"]
 
 
-def _apply_overrides(backend: DetectorBackend, opts: PredictOptions) -> None:
-    """Per-request thresholds, mutated on the shared backend object.
-
-    Safe for the batched path (single-threaded worker). For ?batch=false a
-    concurrent request to the *same* backend could see another request's
-    override for one call - acceptable for a benchmarking switch.
-    """
-    if opts.conf is not None:
-        backend.conf = opts.conf
-    if opts.iou is not None:
-        backend.iou = opts.iou
-    if opts.max_det is not None:
-        backend.max_det = opts.max_det
-
-
-def _reset_overrides(backend: DetectorBackend) -> None:
-    backend.conf, backend.iou, backend.max_det = SETTINGS.conf, SETTINGS.iou, SETTINGS.max_det
-
-
 def _to_response(
     detections: List[Detection],
     img: np.ndarray,
@@ -291,24 +272,38 @@ def _to_response(
     )
 
 
-def _locked_predict(backend: DetectorBackend, images: List[np.ndarray]) -> List[List[Detection]]:
+def _locked_predict(
+    backend: DetectorBackend,
+    images: List[np.ndarray],
+    conf: Optional[float] = None,
+    iou: Optional[float] = None,
+    max_det: Optional[int] = None,
+) -> List[List[Detection]]:
     """backend.predict() under backend.predict_lock - see app/backends/base.py.
 
     Runs in an executor thread; holding the lock here keeps concurrent
     ?batch=false requests (and the batch worker, for the same backend) from
-    ever calling predict() on this instance at the same time.
+    ever calling predict() on this instance at the same time. conf/iou/max_det
+    are this request's own overrides, passed straight through as call
+    arguments - never written onto the shared backend object (see
+    DetectorBackend.predict's docstring for why that used to be a bug).
     """
     with backend.predict_lock:
-        return backend.predict(images)
+        return backend.predict(images, conf=conf, iou=iou, max_det=max_det)
 
 
 async def _infer_unbatched(
-    backend: DetectorBackend, img: np.ndarray
+    backend: DetectorBackend,
+    img: np.ndarray,
+    *,
+    conf: Optional[float] = None,
+    iou: Optional[float] = None,
+    max_det: Optional[int] = None,
 ) -> tuple[List[Detection], float]:
     """Skip the queue: one image straight through backend.predict()."""
     loop = asyncio.get_running_loop()
     t0 = time.perf_counter()
-    results = await loop.run_in_executor(None, _locked_predict, backend, [img])
+    results = await loop.run_in_executor(None, _locked_predict, backend, [img], conf, iou, max_det)
     infer_ms = (time.perf_counter() - t0) * 1000.0
     dets = results[0] if results else []
     for det in dets:
@@ -367,15 +362,15 @@ async def predict(
                 raise HTTPException(status_code=400, detail="one of image_b64 or image_url is required")
 
         img = _decode_image(data)
-        _apply_overrides(be, options)
-        try:
-            if batch:
-                detections, batch_size, infer_ms = await predictor.predict(img)
-            else:
-                detections, infer_ms = await _infer_unbatched(be, img)
-                batch_size = 1
-        finally:
-            _reset_overrides(be)
+        if batch:
+            detections, batch_size, infer_ms = await predictor.predict(
+                img, conf=options.conf, iou=options.iou, max_det=options.max_det
+            )
+        else:
+            detections, infer_ms = await _infer_unbatched(
+                be, img, conf=options.conf, iou=options.iou, max_det=options.max_det
+            )
+            batch_size = 1
 
         total_ms = (time.perf_counter() - t0) * 1000.0
         metrics.REQUESTS.labels(endpoint="/predict", backend=bname, status="200").inc()

@@ -11,7 +11,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -25,9 +25,40 @@ log = logging.getLogger(__name__)
 class _Job:
     image: np.ndarray
     future: "asyncio.Future[List[Detection]]"
+    # Per-request threshold overrides (None = backend default). These travel
+    # with the job and are passed to predict() as call arguments - never
+    # written onto the shared backend object, which was the bug: two
+    # concurrent requests writing to backend.conf could stomp each other's
+    # value, and a coalesced batch would run every image under whichever
+    # request's override happened to land last.
+    conf: Optional[float] = None
+    iou: Optional[float] = None
+    max_det: Optional[int] = None
     enqueued_at: float = field(default_factory=time.perf_counter)
     batch_size: int = 0
     infer_ms: float = 0.0
+
+
+def _group_by_options(batch: Sequence[_Job]) -> List[List["_Job"]]:
+    """Split a collected batch into runs of jobs sharing identical
+    (conf, iou, max_det) - a single predict() call can only apply one
+    threshold to the whole call, so jobs that disagree can't be inferred
+    together. Jobs are grouped by key regardless of position (not just
+    adjacent ones), so the common case - everyone using backend defaults -
+    still becomes exactly one forward pass even if a single overridden
+    request is queued in between them; a request with its own override
+    always gets its own group, so it always gets exactly the threshold it
+    asked for.
+    """
+    order: List[Tuple[Optional[float], Optional[float], Optional[int]]] = []
+    groups: Dict[Tuple[Optional[float], Optional[float], Optional[int]], List[_Job]] = {}
+    for job in batch:
+        key = (job.conf, job.iou, job.max_det)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(job)
+    return [groups[key] for key in order]
 
 
 class BatchedPredictor:
@@ -68,13 +99,24 @@ class BatchedPredictor:
 
     # ---------------- public API ----------------
 
-    async def predict(self, image: np.ndarray) -> tuple[List[Detection], int, float]:
-        """Submit one image. Returns (detections, batch_size, infer_ms)."""
+    async def predict(
+        self,
+        image: np.ndarray,
+        *,
+        conf: Optional[float] = None,
+        iou: Optional[float] = None,
+        max_det: Optional[int] = None,
+    ) -> tuple[List[Detection], int, float]:
+        """Submit one image. Returns (detections, batch_size, infer_ms).
+
+        conf/iou/max_det are this request's own overrides (None = backend
+        default); they travel with the job and never touch shared state.
+        """
         if self._closing:
             raise RuntimeError("predictor is shutting down")
 
         loop = asyncio.get_running_loop()
-        job = _Job(image=image, future=loop.create_future())
+        job = _Job(image=image, future=loop.create_future(), conf=conf, iou=iou, max_det=max_det)
         try:
             self._queue.put_nowait(job)
         except asyncio.QueueFull as exc:
@@ -111,15 +153,23 @@ class BatchedPredictor:
                 raise
 
             metrics.QUEUE_DEPTH.set(self._queue.qsize())
-            metrics.BATCH_SIZE.observe(len(batch))
             now = time.perf_counter()
             for job in batch:
                 metrics.QUEUE_WAIT.observe(now - job.enqueued_at)
 
             try:
-                results, infer_ms = await loop.run_in_executor(
-                    None, self._infer_batch, [j.image for j in batch]
-                )
+                # Same threshold -> one forward pass, same as before. Different
+                # thresholds -> one forward pass per distinct (conf, iou,
+                # max_det); see _group_by_options. Either way, every job gets
+                # inferred with exactly the threshold it asked for.
+                for group in _group_by_options(batch):
+                    metrics.BATCH_SIZE.observe(len(group))
+                    results, infer_ms = await loop.run_in_executor(None, self._infer_batch, group)
+                    for job, dets in zip(group, results):
+                        job.batch_size = len(group)
+                        job.infer_ms = infer_ms
+                        if not job.future.done():
+                            job.future.set_result(dets)
             except asyncio.CancelledError:
                 for job in batch:
                     if not job.future.done():
@@ -132,21 +182,19 @@ class BatchedPredictor:
                         job.future.set_exception(exc)
                 continue
 
-            for job, dets in zip(batch, results):
-                job.batch_size = len(batch)
-                job.infer_ms = infer_ms
-                if not job.future.done():
-                    job.future.set_result(dets)
-
-    def _infer_batch(self, images: Sequence[np.ndarray]) -> tuple[List[List[Detection]], float]:
-        """Runs in a worker thread. predict() covers preprocess + inference + decode.
+    def _infer_batch(self, jobs: Sequence[_Job]) -> tuple[List[List[Detection]], float]:
+        """Runs in a worker thread. All jobs in `jobs` share identical
+        conf/iou/max_det (see _group_by_options), so one predict() call
+        covers preprocess + inference + decode for the whole group.
 
         Holds backend.predict_lock so this never overlaps with an unbatched
         (?batch=false) request hitting the same backend instance concurrently.
         """
+        images = [j.image for j in jobs]
+        conf, iou, max_det = jobs[0].conf, jobs[0].iou, jobs[0].max_det
         t0 = time.perf_counter()
         with self.backend.predict_lock:
-            results = self.backend.predict(images)
+            results = self.backend.predict(images, conf=conf, iou=iou, max_det=max_det)
         infer_s = time.perf_counter() - t0
 
         metrics.INFERENCE_LATENCY.labels(backend=self.backend.name).observe(infer_s)

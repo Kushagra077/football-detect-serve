@@ -55,7 +55,14 @@ class OnnxBackend(DetectorBackend):
             self.class_names = {int(k): str(v) for k, v in dict(names).items()}
         return self
 
-    def predict(self, images: Sequence[np.ndarray]) -> List[List[Detection]]:
+    def predict(
+        self,
+        images: Sequence[np.ndarray],
+        *,
+        conf: Optional[float] = None,
+        iou: Optional[float] = None,
+        max_det: Optional[int] = None,
+    ) -> List[List[Detection]]:
         if self._yolo is None:
             raise RuntimeError("OnnxBackend.load() was never called")
 
@@ -67,15 +74,15 @@ class OnnxBackend(DetectorBackend):
         if sb and len(images) > sb:
             out: List[List[Detection]] = []
             for i in range(0, len(images), sb):
-                out.extend(self.predict(images[i : i + sb]))
+                out.extend(self.predict(images[i : i + sb], conf=conf, iou=iou, max_det=max_det))
             return out
 
         results = self._yolo.predict(
             images,
             imgsz=self.imgsz,
-            conf=self.conf,
-            iou=self.iou,
-            max_det=self.max_det,
+            conf=self.conf if conf is None else conf,
+            iou=self.iou if iou is None else iou,
+            max_det=self.max_det if max_det is None else max_det,
             device=self.device,
             verbose=False,
         )

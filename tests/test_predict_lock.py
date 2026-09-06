@@ -35,7 +35,7 @@ class _SlowBackend(DetectorBackend):
     def name(self) -> str:
         return "slow-fake"
 
-    def predict(self, images):
+    def predict(self, images, *, conf=None, iou=None, max_det=None):
         with self._state_lock:
             self.active += 1
             self.max_concurrent = max(self.max_concurrent, self.active)

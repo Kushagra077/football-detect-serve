@@ -84,6 +84,27 @@ def test_predict_batch_false_bypasses_queue(client):
     assert resp.json()["batch_size"] == 1
 
 
+def test_predict_conf_override_is_call_arg_not_shared_state(client):
+    """Guards against the fixed bug: a ?conf= override used to be written onto
+    the shared backend object (backend.conf = ...), so it could leak into a
+    concurrent request or get reset out from under one still in flight. It
+    must now reach predict() as a call argument only, leaving the backend's
+    own default untouched.
+    """
+    backend = main_module.STATE["registry"][main_module.STATE["default"]]["backend"]
+    baseline_conf = backend.conf
+
+    resp = client.post(
+        "/predict",
+        data={"conf": "0.9"},
+        files={"file": ("f.jpg", tiny_jpeg_bytes(), "image/jpeg")},
+    )
+    assert resp.status_code == 200
+
+    assert backend.call_options[-1] == (0.9, None, None)
+    assert backend.conf == baseline_conf  # never mutated
+
+
 def test_predict_not_warm_returns_503(client):
     main_module.STATE["warm"] = False
     try:

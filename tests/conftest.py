@@ -25,6 +25,10 @@ class FakeBackend(DetectorBackend):
         self.class_names = dict(kwargs.get("class_names") or DEFAULT_CLASS_NAMES)
         self._fixed = fixed_detections if fixed_detections is not None else []
         self.calls: List[int] = []
+        # (conf, iou, max_det) actually passed to each predict() call - lets
+        # tests assert per-request overrides reached predict() as call
+        # arguments instead of being read off self.conf/self.iou/self.max_det.
+        self.call_options: List[tuple] = []
 
     def load(self) -> "FakeBackend":
         return self
@@ -33,8 +37,16 @@ class FakeBackend(DetectorBackend):
     def name(self) -> str:
         return "fake"
 
-    def predict(self, images: Sequence[np.ndarray]) -> List[List[Detection]]:
+    def predict(
+        self,
+        images: Sequence[np.ndarray],
+        *,
+        conf: Optional[float] = None,
+        iou: Optional[float] = None,
+        max_det: Optional[int] = None,
+    ) -> List[List[Detection]]:
         self.calls.append(len(images))
+        self.call_options.append((conf, iou, max_det))
         return [list(self._fixed) for _ in images]
 
 

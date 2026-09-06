@@ -38,6 +38,48 @@ async def test_batch_size_capped_at_max_batch_size():
         await predictor.stop()
 
 
+async def test_requests_with_different_overrides_never_share_a_threshold():
+    """Guards the shared-mutable-state bug: conf/iou/max_det used to be written
+    onto the shared backend object, so two requests coalesced into one batch
+    could end up inferred under whichever request's override landed last.
+    Overrides now travel with the job and are passed as call arguments, so a
+    batch containing different thresholds must split into separate calls -
+    never blend them.
+    """
+    backend = FakeBackend(weights="fake")
+    predictor = BatchedPredictor(backend, max_batch_size=8, max_wait_ms=50, max_queue_size=10)
+    await predictor.start()
+    try:
+        img = tiny_image()
+        await asyncio.gather(
+            predictor.predict(img, conf=0.1),
+            predictor.predict(img, conf=0.9),
+        )
+        # Two distinct forward passes, one per threshold - never merged.
+        assert sorted(backend.calls) == [1, 1]
+        assert sorted(backend.call_options) == [(0.1, None, None), (0.9, None, None)]
+    finally:
+        await predictor.stop()
+
+
+async def test_requests_with_matching_overrides_still_coalesce():
+    """The common case - everyone using the same (or no) override - must still
+    become exactly one forward pass; correctness for the mixed case shouldn't
+    cost throughput in the normal case.
+    """
+    backend = FakeBackend(weights="fake")
+    predictor = BatchedPredictor(backend, max_batch_size=8, max_wait_ms=50, max_queue_size=10)
+    await predictor.start()
+    try:
+        img = tiny_image()
+        results = await asyncio.gather(*(predictor.predict(img, conf=0.4) for _ in range(4)))
+        assert backend.calls == [4]  # still one predict() call for all four
+        assert backend.call_options == [(0.4, None, None)]
+        assert [batch_size for _, batch_size, _ in results] == [4, 4, 4, 4]
+    finally:
+        await predictor.stop()
+
+
 async def test_queue_overflow_raises_when_full():
     backend = FakeBackend(weights="fake")
     # No .start() - nothing drains the queue, so it fills up deterministically.

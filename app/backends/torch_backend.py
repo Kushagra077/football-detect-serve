@@ -7,7 +7,7 @@ assumed the classic anchor-grid layout that YOLO26 does not use. See PROGRESS.md
 """
 from __future__ import annotations
 
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
 import numpy as np
 
@@ -35,15 +35,22 @@ class TorchBackend(DetectorBackend):
             self.class_names = {int(k): str(v) for k, v in dict(names).items()}
         return self
 
-    def predict(self, images: Sequence[np.ndarray]) -> List[List[Detection]]:
+    def predict(
+        self,
+        images: Sequence[np.ndarray],
+        *,
+        conf: Optional[float] = None,
+        iou: Optional[float] = None,
+        max_det: Optional[int] = None,
+    ) -> List[List[Detection]]:
         if self._yolo is None:
             raise RuntimeError("TorchBackend.load() was never called")
         results = self._yolo.predict(
             list(images),
             imgsz=self.imgsz,
-            conf=self.conf,
-            iou=self.iou,
-            max_det=self.max_det,
+            conf=self.conf if conf is None else conf,
+            iou=self.iou if iou is None else iou,
+            max_det=self.max_det if max_det is None else max_det,
             device=self.device,
             quantize=16 if (self.half and self.device != "cpu") else None,
             verbose=False,
