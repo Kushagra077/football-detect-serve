@@ -4,6 +4,8 @@ app.main.build_backend - so no real model weights or ML deps are ever touched.
 """
 from __future__ import annotations
 
+import base64
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -135,6 +137,111 @@ def test_predict_bad_backend_label_is_bounded_not_raw_input(client):
     # strings themselves, and "invalid" must be the sentinel actually used.
     assert "invalid" in backend_labels
     assert backend_labels.isdisjoint(garbage_names)
+
+
+def test_predict_json_body_image_b64_happy_path(client):
+    """The JSON body path (image_b64/image_url) previously had no test
+    coverage at all - this is the API's other input mode besides multipart.
+    """
+    payload = base64.b64encode(tiny_jpeg_bytes()).decode()
+    resp = client.post("/predict", json={"image_b64": payload})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["detections"] == []
+    assert body["batched"] is True
+
+
+def test_predict_json_body_data_uri_prefix_is_stripped(client):
+    payload = "data:image/jpeg;base64," + base64.b64encode(tiny_jpeg_bytes()).decode()
+    resp = client.post("/predict", json={"image_b64": payload})
+    assert resp.status_code == 200
+
+
+def test_predict_multipart_oversized_rejected_before_backend_sees_it(client, monkeypatch):
+    """Guards the fixed bug: file.read() used to buffer the whole upload
+    before MAX_UPLOAD_BYTES was ever checked. Cap it low and confirm an
+    oversized upload is rejected - and never reaches predict() at all.
+    """
+    monkeypatch.setattr(main_module, "MAX_UPLOAD_BYTES", 10)
+    backend = main_module.STATE["registry"][main_module.STATE["default"]]["backend"]
+    calls_before = len(backend.calls)
+
+    resp = client.post(
+        "/predict",
+        files={"file": ("f.jpg", tiny_jpeg_bytes(), "image/jpeg")},  # well over 10 bytes
+    )
+
+    assert resp.status_code == 413
+    assert len(backend.calls) == calls_before  # rejected before any inference
+
+
+def test_predict_json_b64_oversized_rejected_before_decode(client, monkeypatch):
+    """Same guard as above, for the JSON image_b64 path: the base64 string -
+    and the request body carrying it - must be capped before base64.b64decode
+    or json.loads ever run on it, not just checked afterward.
+    """
+    monkeypatch.setattr(main_module, "MAX_UPLOAD_BYTES", 10)
+    monkeypatch.setattr(main_module, "MAX_B64_CHARS", 32)
+    backend = main_module.STATE["registry"][main_module.STATE["default"]]["backend"]
+    calls_before = len(backend.calls)
+
+    payload = base64.b64encode(tiny_jpeg_bytes()).decode()  # well over 32 chars
+    resp = client.post("/predict", json={"image_b64": payload})
+
+    assert resp.status_code == 413
+    assert len(backend.calls) == calls_before
+
+
+async def test_read_upload_capped_never_requests_an_unbounded_read(monkeypatch):
+    """The actual mechanism this guards: file.read() with no size argument
+    buffers the *entire* upload regardless of MAX_UPLOAD_BYTES, so a size
+    check only ever runs after the fact. _read_upload_capped must always
+    pass an explicit bound to read() - proven here by recording what size
+    argument it actually used, not just checking the final status code
+    (which an old, unbounded read would also produce, via _decode_image's
+    own after-the-fact check).
+    """
+    monkeypatch.setattr(main_module, "MAX_UPLOAD_BYTES", 5)
+    requested_sizes = []
+
+    class _FakeUpload:
+        async def read(self, size=None):
+            requested_sizes.append(size)
+            return b"x" * 100  # pretend there's plenty more behind this read
+
+    with pytest.raises(main_module.HTTPException) as exc_info:
+        await main_module._read_upload_capped(_FakeUpload())
+
+    assert exc_info.value.status_code == 413
+    assert requested_sizes == [6]  # MAX_UPLOAD_BYTES + 1 - never None/unbounded
+
+
+async def test_read_json_body_capped_stops_as_soon_as_the_cap_is_crossed(monkeypatch):
+    """The actual mechanism this guards: request.json() reads the whole body
+    into memory before any size check runs. _read_json_body_capped must
+    reject as soon as the running total crosses the cap, without needing to
+    drain the rest of the stream first - proven here by a chunk source that
+    would keep yielding if fully drained, and checking it wasn't.
+    """
+    monkeypatch.setattr(main_module, "MAX_B64_CHARS", 15)
+
+    class _FakeStreamRequest:
+        def __init__(self, chunks):
+            self._chunks = chunks
+            self.chunks_yielded = 0
+
+        async def stream(self):
+            for chunk in self._chunks:
+                self.chunks_yielded += 1
+                yield chunk
+
+    fake_request = _FakeStreamRequest([b"a" * 10, b"b" * 10, b"c" * 10, b"d" * 10])
+
+    with pytest.raises(main_module.HTTPException) as exc_info:
+        await main_module._read_json_body_capped(fake_request)
+
+    assert exc_info.value.status_code == 413
+    assert fake_request.chunks_yielded == 2  # stopped once the cap was crossed, not all 4
 
 
 def test_predict_not_warm_returns_503(client):

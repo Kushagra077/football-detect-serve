@@ -80,6 +80,43 @@ async def test_requests_with_matching_overrides_still_coalesce():
         await predictor.stop()
 
 
+async def test_batching_metrics_are_labeled_per_backend():
+    """Guards against the bug where QUEUE_WAIT/BATCH_SIZE/QUEUE_DEPTH had no
+    labels at all: with 3 backends each running their own BatchedPredictor,
+    an unlabeled metric silently blends all of them into one meaningless
+    series. Two predictors with distinct backend names must produce distinct
+    label values, not one shared bucket.
+    """
+    from app import metrics as metrics_module
+
+    backend_a = FakeBackend(weights="fake", name="test-backend-a")
+    backend_b = FakeBackend(weights="fake", name="test-backend-b")
+    predictor_a = BatchedPredictor(backend_a, max_batch_size=8, max_wait_ms=20, max_queue_size=10)
+    predictor_b = BatchedPredictor(backend_b, max_batch_size=8, max_wait_ms=20, max_queue_size=10)
+    await predictor_a.start()
+    await predictor_b.start()
+    try:
+        img = tiny_image()
+        await predictor_a.predict(img)
+        await predictor_b.predict(img)
+
+        batch_size_labels = {
+            s.labels["backend"]
+            for s in metrics_module.BATCH_SIZE.collect()[0].samples
+            if s.name.endswith("_count")
+        }
+        queue_wait_labels = {
+            s.labels["backend"]
+            for s in metrics_module.QUEUE_WAIT.collect()[0].samples
+            if s.name.endswith("_count")
+        }
+        assert {"test-backend-a", "test-backend-b"} <= batch_size_labels
+        assert {"test-backend-a", "test-backend-b"} <= queue_wait_labels
+    finally:
+        await predictor_a.stop()
+        await predictor_b.stop()
+
+
 async def test_queue_overflow_raises_when_full():
     backend = FakeBackend(weights="fake")
     # No .start() - nothing drains the queue, so it fills up deterministically.

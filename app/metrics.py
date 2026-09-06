@@ -37,21 +37,27 @@ DETECTIONS = Counter(
 )
 
 # --- batching ---
+# Labeled by backend: each loaded backend (torch/onnx-fp32/onnx-int8) runs its
+# own BatchedPredictor with its own queue, so an unlabeled metric here would
+# silently blend all of them into one meaningless series.
 QUEUE_WAIT = Histogram(
     "fds_queue_wait_seconds",
     "Time a request spent waiting to be batched.",
+    ["backend"],
     buckets=(0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25),
     registry=REGISTRY,
 )
 BATCH_SIZE = Histogram(
     "fds_batch_size",
     "Requests coalesced per forward pass.",
+    ["backend"],
     buckets=(1, 2, 3, 4, 6, 8, 12, 16, 32),
     registry=REGISTRY,
 )
 QUEUE_DEPTH = Gauge(
     "fds_queue_depth",
     "Requests currently waiting in the batch queue.",
+    ["backend"],
     registry=REGISTRY,
 )
 INFLIGHT = Gauge(

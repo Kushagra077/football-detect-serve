@@ -122,7 +122,7 @@ class BatchedPredictor:
         except asyncio.QueueFull as exc:
             raise QueueOverflow("inference queue is full") from exc
 
-        metrics.QUEUE_DEPTH.set(self._queue.qsize())
+        metrics.QUEUE_DEPTH.labels(backend=self.backend.name).set(self._queue.qsize())
         detections = await job.future
         return detections, job.batch_size, job.infer_ms
 
@@ -152,10 +152,10 @@ class BatchedPredictor:
                 self._drain_cancelled()
                 raise
 
-            metrics.QUEUE_DEPTH.set(self._queue.qsize())
+            metrics.QUEUE_DEPTH.labels(backend=self.backend.name).set(self._queue.qsize())
             now = time.perf_counter()
             for job in batch:
-                metrics.QUEUE_WAIT.observe(now - job.enqueued_at)
+                metrics.QUEUE_WAIT.labels(backend=self.backend.name).observe(now - job.enqueued_at)
 
             try:
                 # Same threshold -> one forward pass, same as before. Different
@@ -163,7 +163,7 @@ class BatchedPredictor:
                 # max_det); see _group_by_options. Either way, every job gets
                 # inferred with exactly the threshold it asked for.
                 for group in _group_by_options(batch):
-                    metrics.BATCH_SIZE.observe(len(group))
+                    metrics.BATCH_SIZE.labels(backend=self.backend.name).observe(len(group))
                     results, infer_ms = await loop.run_in_executor(None, self._infer_batch, group)
                     for job, dets in zip(group, results):
                         job.batch_size = len(group)

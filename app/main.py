@@ -14,6 +14,7 @@ import asyncio
 import base64
 import binascii
 import ipaddress
+import json
 import logging
 import os
 import socket
@@ -45,6 +46,11 @@ logging.basicConfig(
 log = logging.getLogger("app")
 
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", 10 * 1024 * 1024))
+# base64 inflates raw bytes by 4/3; the JSON body carrying image_b64 is
+# checked against this larger cap (not MAX_UPLOAD_BYTES) so an image right at
+# the limit isn't rejected purely for encoding overhead. +1024 covers the
+# surrounding JSON syntax and the "options"/"image_url" keys.
+MAX_B64_CHARS = MAX_UPLOAD_BYTES * 4 // 3 + 1024
 
 _DEFAULT_MODELS = (
     "torch=models/football_detection_v3.pt,"
@@ -162,6 +168,12 @@ def _decode_image(data: bytes) -> np.ndarray:
 def _decode_b64(payload: str) -> bytes:
     if "," in payload[:64] and payload.lstrip().startswith("data:"):
         payload = payload.split(",", 1)[1]
+    # Reject an oversized string before base64.b64decode ever runs, rather
+    # than decoding an arbitrarily large payload and only checking the
+    # result's size afterward (see _decode_image's own check, which still
+    # runs too, as defense in depth).
+    if len(payload) > MAX_B64_CHARS:
+        raise HTTPException(status_code=413, detail="image_b64 exceeds MAX_UPLOAD_BYTES")
     try:
         return base64.b64decode(payload, validate=True)
     except (binascii.Error, ValueError) as exc:
@@ -211,12 +223,15 @@ def _validate_image_url(url: str) -> None:
 async def _fetch_url(url: str) -> bytes:
     import requests
 
-    try:
-        _validate_image_url(url)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     def _get() -> bytes:
+        # Runs in an executor thread, not the event loop: _validate_image_url's
+        # DNS lookup (socket.getaddrinfo) is a blocking call with no timeout of
+        # its own, so a slow or hostile resolver would otherwise stall every
+        # other request on this worker while this one waits for a reply.
+        try:
+            _validate_image_url(url)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         # allow_redirects=False: a validated hostname could still redirect
         # somewhere internal - don't follow it rather than re-validate a chain.
         resp = requests.get(url, timeout=10, stream=True, allow_redirects=False)
@@ -229,6 +244,41 @@ async def _fetch_url(url: str) -> bytes:
         raise
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"could not fetch image_url: {exc}") from exc
+
+
+async def _read_upload_capped(file: UploadFile) -> bytes:
+    """Read a multipart file up to MAX_UPLOAD_BYTES+1 bytes.
+
+    Same "read one byte past the limit, then check" shape _fetch_url already
+    uses for image_url: caps how much ever lands in memory, instead of
+    reading the whole thing with file.read() and only checking its size
+    afterward (which does nothing to bound peak memory).
+    """
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="image exceeds MAX_UPLOAD_BYTES")
+    return data
+
+
+async def _read_json_body_capped(request: Request) -> dict:
+    """Read + parse the JSON body, capped at MAX_B64_CHARS bytes.
+
+    request.json() has no size limit of its own and would otherwise buffer
+    an arbitrarily large body - relevant here because image_b64 embeds the
+    whole image as base64 text inside this JSON. Reads via request.stream()
+    so the cap is enforced while reading, not after the fact.
+    """
+    chunks: List[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > MAX_B64_CHARS:
+            raise HTTPException(status_code=413, detail="request body exceeds MAX_UPLOAD_BYTES")
+        chunks.append(chunk)
+    raw = b"".join(chunks)
+    if not raw:
+        raise ValueError("empty request body")
+    return json.loads(raw)
 
 
 def _resolve(name: Optional[str]) -> tuple[str, DetectorBackend, BatchedPredictor]:
@@ -344,11 +394,11 @@ async def predict(
         bname = name
 
         if file is not None:
-            data = await file.read()
+            data = await _read_upload_capped(file)
             options = PredictOptions(conf=conf, iou=iou, max_det=max_det)
         else:
             try:
-                body = PredictRequest(**(await request.json()))
+                body = PredictRequest(**(await _read_json_body_capped(request)))
             except HTTPException:
                 raise
             except Exception as exc:  # noqa: BLE001 - malformed/absent JSON body

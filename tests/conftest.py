@@ -20,10 +20,17 @@ class FakeBackend(DetectorBackend):
     can assert on how requests were grouped.
     """
 
-    def __init__(self, *args, fixed_detections: Optional[List[Detection]] = None, **kwargs) -> None:
+    def __init__(
+        self,
+        *args,
+        fixed_detections: Optional[List[Detection]] = None,
+        name: str = "fake",
+        **kwargs,
+    ) -> None:
         super().__init__(*args, **kwargs)
         self.class_names = dict(kwargs.get("class_names") or DEFAULT_CLASS_NAMES)
         self._fixed = fixed_detections if fixed_detections is not None else []
+        self._name = name
         self.calls: List[int] = []
         # (conf, iou, max_det) actually passed to each predict() call - lets
         # tests assert per-request overrides reached predict() as call
@@ -35,7 +42,7 @@ class FakeBackend(DetectorBackend):
 
     @property
     def name(self) -> str:
-        return "fake"
+        return self._name
 
     def predict(
         self,

@@ -3,10 +3,14 @@ pure, and hostname resolution only ever uses "localhost" (guaranteed to resolve
 via loopback with no real network access, even in CI)."""
 from __future__ import annotations
 
+import asyncio
 import ipaddress
+import socket
+import time
 
 import pytest
 
+import app.main as main_module
 from app.main import _is_blocked_ip, _validate_image_url
 
 
@@ -60,3 +64,56 @@ def test_validate_image_url_rejects_loopback_literal():
 def test_validate_image_url_rejects_unresolvable_host():
     with pytest.raises(ValueError, match="could not resolve host"):
         _validate_image_url("http://this-host-does-not-exist.invalid/x.jpg")
+
+
+async def test_fetch_url_dns_lookup_does_not_block_event_loop(monkeypatch):
+    """Guards the fixed bug: _validate_image_url's DNS lookup used to run
+    directly on the event loop, before _fetch_url dispatched to the executor -
+    a slow resolver would then stall every other request on the worker. It
+    must now run inside the same executor call as the fetch itself, so a slow
+    lookup only delays this one request, never the event loop.
+
+    No real network or DNS: socket.getaddrinfo and requests.get are both
+    replaced with fakes; getaddrinfo's fake blocks for 200ms to simulate a
+    slow resolver.
+    """
+
+    def slow_getaddrinfo(host, *args, **kwargs):
+        time.sleep(0.2)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        class raw:
+            @staticmethod
+            def read(*args, **kwargs):
+                return b"fake-image-bytes"
+
+    monkeypatch.setattr(main_module.socket, "getaddrinfo", slow_getaddrinfo)
+    monkeypatch.setattr("requests.get", lambda *a, **k: _FakeResponse())
+
+    first_tick_time: list[float] = []
+
+    async def ticker() -> None:
+        for _ in range(5):
+            first_tick_time.append(time.perf_counter())
+            await asyncio.sleep(0.01)
+
+    t0 = time.perf_counter()
+    # Scheduled, not run yet - a Task only starts once its creator yields
+    # control back to the loop, which is exactly what this test is probing.
+    ticker_task = asyncio.ensure_future(ticker())
+    data = await main_module._fetch_url("http://example.com/x.jpg")
+    fetch_elapsed = time.perf_counter() - t0
+    await ticker_task
+
+    assert data == b"fake-image-bytes"
+    assert fetch_elapsed >= 0.2  # the slow "DNS lookup" really did happen
+    # The ticker must get its first turn almost immediately: _fetch_url's
+    # first await point should be run_in_executor (yields right away, work
+    # happens on a background thread). If the DNS lookup instead ran
+    # synchronously on the event loop before any await, the ticker couldn't
+    # start until that ~200ms finished, and this would be ~0.2 instead.
+    assert first_tick_time[0] - t0 < 0.05
