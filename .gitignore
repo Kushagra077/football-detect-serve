@@ -5,6 +5,7 @@
 PROGRESS.md
 A1-detection-serving-build-spec.md
 review.md
+design_decision.md
 
 # --- python ---
 __pycache__/
