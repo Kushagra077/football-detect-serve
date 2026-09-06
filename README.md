@@ -197,6 +197,14 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+No pretrained weights are distributed with this repo, on purpose — `models/` is
+gitignored, and `models/download_weights.py` has no default source to fetch from. The
+point of this project is the pipeline (data -> train -> eval -> export -> serve), not a
+checkpoint to download; run [Pipeline](#pipeline) below to produce your own
+`models/football_detection_v*.pt` from SoccerNet data before `app.main` has anything to
+serve. If you just want to see it work first, the [Live demo](#live-demo) already has
+weights loaded.
+
 ## Testing
 
 ```bash

@@ -333,7 +333,11 @@ async def predict(
     request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
     t0 = time.perf_counter()
     metrics.INFLIGHT.inc()
-    bname = backend or STATE.get("default", "-")
+    # Metric label, bounded to {registry names} u {"invalid"} - never the raw
+    # ?backend= string. A client-supplied name is untrusted until _resolve()
+    # validates it below; recording it as a label before that would let anyone
+    # mint unlimited Prometheus time series just by varying the query param.
+    bname = STATE.get("default", "-") if backend is None else "invalid"
 
     try:
         name, be, predictor = _resolve(backend)

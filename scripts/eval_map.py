@@ -10,7 +10,11 @@ Usage:
     python scripts/eval_map.py --backend torch --weights models/football_detection_v3.pt
     python scripts/eval_map.py --backend onnx  --weights models/football_detection_v3.onnx
     python scripts/eval_map.py --backend onnx  --weights models/football_detection_v3_int8.onnx \
-        --compare-to reports/accuracy.onnx.v3.fp32.json --max-map-drop 0.02
+        --compare-to reports/accuracy.onnx.v3.fp32.json
+
+--max-map-drop has no built-in default (see configs/train.yaml's quantize: block for
+why). Without it, --compare-to just prints the measured drop with no pass/fail verdict;
+add --max-map-drop <value> yourself once you have a target to gate on.
 """
 from __future__ import annotations
 
@@ -366,12 +370,18 @@ def main() -> int:
             print(f"[warn] baseline {baseline_path} missing; skipping accuracy gate")
             return 0
         baseline = json.loads(baseline_path.read_text())
-        limit = (
-            args.max_map_drop
-            if args.max_map_drop is not None
-            else cfg.get("quantize", {}).get("max_map_drop", 0.02)
-        )
+        # No built-in fallback number - configs/train.yaml deliberately doesn't
+        # declare one yet (see its quantize: block). Without an explicit limit
+        # this is a measurement, not a gate: report the drop, judge nothing.
+        limit = args.max_map_drop if args.max_map_drop is not None else cfg.get("quantize", {}).get("max_map_drop")
         drop = baseline["overall"]["map50_95"] - overall["map50_95"]
+        if limit is None:
+            print(
+                f"\n[info] baseline({baseline['backend']}) mAP50-95={baseline['overall']['map50_95']:.4f} "
+                f"-> {backend.name} {overall['map50_95']:.4f}  drop={drop:+.4f} "
+                f"(no --max-map-drop set - reporting only, not gating)"
+            )
+            return 0
         print(
             f"\n[gate] baseline({baseline['backend']}) mAP50-95={baseline['overall']['map50_95']:.4f} "
             f"-> {backend.name} {overall['map50_95']:.4f}  drop={drop:+.4f} (limit {limit})"

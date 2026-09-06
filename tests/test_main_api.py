@@ -105,6 +105,38 @@ def test_predict_conf_override_is_call_arg_not_shared_state(client):
     assert backend.conf == baseline_conf  # never mutated
 
 
+def test_predict_bad_backend_label_is_bounded_not_raw_input(client):
+    """Guards against unbounded Prometheus cardinality: an invalid ?backend=
+    used to be recorded as a metric label verbatim (app/main.py's bname), so a
+    client could mint unlimited time series just by varying the query string.
+    Every rejected name must now collapse to one fixed sentinel label.
+    """
+    from app import metrics as metrics_module
+
+    garbage_names = ["nope-1", "nope-2", "!!!weird??", "a" * 200]
+    for name in garbage_names:
+        resp = client.post(
+            "/predict",
+            params={"backend": name},
+            files={"file": ("f.jpg", tiny_jpeg_bytes(), "image/jpeg")},
+        )
+        assert resp.status_code == 400
+
+    samples = metrics_module.REQUESTS.collect()[0].samples
+    backend_labels = {
+        s.labels["backend"]
+        for s in samples
+        if s.labels.get("endpoint") == "/predict" and s.labels.get("status") == "400"
+    }
+    # The registry is a process-wide singleton shared across the whole test
+    # session, so other /predict(...400) calls may have already recorded a
+    # *real* backend name here (e.g. a missing-body 400 on a valid backend) -
+    # that's legitimate. What must never appear is one of the garbage
+    # strings themselves, and "invalid" must be the sentinel actually used.
+    assert "invalid" in backend_labels
+    assert backend_labels.isdisjoint(garbage_names)
+
+
 def test_predict_not_warm_returns_503(client):
     main_module.STATE["warm"] = False
     try:
