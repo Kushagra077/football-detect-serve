@@ -29,9 +29,11 @@ Two evaluations, because the two splits don't mean the same thing:
   **optimistically**. Kept for training-time monitoring, not as a headline result.
 
 Model lineage: **v1 nano** and **v2 small** are 10-epoch baselines. **v3 nano** is the
-current nano — 20 epochs, with `copy_paste=0.3` + `mixup=0.1` added specifically to help
-the rare, tiny ball class. v3 replaces v1; v1's numbers are kept as the before/after
-reference.
+current nano — 20 epochs, with `mixup=0.1` added specifically to help the rare, tiny ball
+class. (`copy_paste` is not used: it requires per-instance segmentation masks, and this is
+a bbox-only detection dataset — with no masks it silently no-ops in ultralytics, so it's
+left off rather than set and ignored.) v3 replaces v1; v1's numbers are kept as the
+before/after reference.
 
 #### test split — mAP50-95, torch, 36,750 images (the real number)
 
@@ -45,9 +47,8 @@ reference.
 poorly (~0.23), but measurable.
 
 **v1 → v3**: ball AP **+23%** on this trustworthy split (0.090 → 0.111), every other real
-class up too — the `copy_paste`/`mixup` experiment worked. (Two things changed at once —
-20 epochs *and* the augmentation — so the ball gain is most likely the augmentation and
-the general uplift most likely the epochs, but they can't be cleanly separated.)
+class up too — the extra epochs and `mixup` combined to help. (Two things changed at once —
+10→20 epochs *and* `mixup` — so the gain can't be cleanly attributed to either alone.)
 
 #### val split — mAP50-95, 8,250 images (training-time monitoring only)
 
@@ -78,8 +79,8 @@ those matches. `ball` is dominated by noise at this training length.
 - ONNX-fp32 reproduces torch to <0.001 mAP per class (val), across v1/v2/v3 — the export
   path is faithful.
 - INT8 costs 0.03-0.06 mAP50-95 (val) — v1 −0.027, v2 −0.064, v3 −0.033. On v1 the ball
-  class took the biggest relative hit (~42%); on v3 it's only ~15%, so the
-  `copy_paste`/`mixup`-trained ball survives quantization noticeably better.
+  class took the biggest relative hit (~42%); on v3 it's only ~15%, so the v3 ball
+  detector (extra epochs + `mixup`) survives quantization noticeably better.
 - v1/v2 are **10-epoch**, v3 is **20-epoch** — all still deliberately short of the
   100-epoch `configs/train.yaml` target. Every number here moves with a real training run.
 - **Evaluator cross-check** (`scripts/crosscheck_map.py`): running ultralytics' own
@@ -116,20 +117,31 @@ this service targets CPU.
 
 | concurrency | batching | RPS | p50 ms | p95 ms | p99 ms |
 |---|---|---|---|---|---|
-| 1 | on | 13.6 | 72 | 95 | 120 |
-| 1 | off | 22.9 | 41 | 58 | 81 |
-| 4 | on | 16.0 | 260 | 420 | 630 |
-| 4 | off | 22.8 | 170 | 240 | 350 |
-| 16 | on | 30.9 | 500 | 610 | 1100 |
-| 16 | off | 23.5 | 670 | 1100 | 1300 |
+| 1 | on | 12.6 | 73 | 120 | 180 |
+| 1 | off | 19.1 | 50 | 68 | 85 |
+| 4 | on | 16.3 | 260 | 370 | 520 |
+| 4 | off | 20.3 | 190 | 260 | 340 |
+| 16 | on | 28.2 | 540 | 670 | 1100 |
+| 16 | off | 21.1 | 750 | 1200 | 1400 |
 
-**The answer is "it depends on load," not a flat yes/no.** At concurrency 1 and 4,
+Re-measured after fixing a real bug these numbers exposed: `?batch=false` requests were
+calling `backend.predict()` straight from the executor thread pool with no synchronization,
+so concurrent nobatch requests could run on the same underlying model object at once —
+ultralytics' `YOLO` isn't thread-safe, so that's silent data-corrupting territory, not just
+a performance question. Fixed with a `predict_lock` per backend
+(`app/backends/base.py`), held by both the nobatch path and the batch worker. The batched
+arm barely moved (it was already single-threaded), but nobatch dropped 10-17% on RPS
+against the old, racier numbers, and its concurrency-16 tail latency got markedly worse
+(max response time 9.1s vs the old 3.5s) — the honest cost of requests now genuinely
+queuing for the lock instead of unsafely overlapping.
+
+**The answer is still "it depends on load," not a flat yes/no.** At concurrency 1 and 4,
 batching is pure overhead — most requests never find a batch partner inside the 15ms
 `MAX_WAIT_MS` window, so they pay that wait and then run solo anyway (nobatch wins on
-every axis). At concurrency 16, batching wins outright — higher throughput (30.9 vs 23.5
+every axis). At concurrency 16, batching wins outright — higher throughput (28.2 vs 21.1
 RPS) *and* lower latency at every percentile — because enough concurrent requests land
 inside the window to be grouped into one forward pass, which beats 16 single-image calls
-fighting over the same 4 pinned CPU threads. Zero request failures across all six runs.
+serializing behind the same lock. Zero request failures across all six runs.
 
 ### The acceptance sentence
 

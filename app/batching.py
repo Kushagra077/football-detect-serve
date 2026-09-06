@@ -139,9 +139,14 @@ class BatchedPredictor:
                     job.future.set_result(dets)
 
     def _infer_batch(self, images: Sequence[np.ndarray]) -> tuple[List[List[Detection]], float]:
-        """Runs in a worker thread. predict() covers preprocess + inference + decode."""
+        """Runs in a worker thread. predict() covers preprocess + inference + decode.
+
+        Holds backend.predict_lock so this never overlaps with an unbatched
+        (?batch=false) request hitting the same backend instance concurrently.
+        """
         t0 = time.perf_counter()
-        results = self.backend.predict(images)
+        with self.backend.predict_lock:
+            results = self.backend.predict(images)
         infer_s = time.perf_counter() - t0
 
         metrics.INFERENCE_LATENCY.labels(backend=self.backend.name).observe(infer_s)

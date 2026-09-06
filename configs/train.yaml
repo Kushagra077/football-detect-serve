@@ -20,7 +20,7 @@ model:
 train:
   # v1/v2/v3 were run as a raw model.train(...) call in a Kaggle notebook
   # (device=[0,1], multi-GPU), not through scripts/train.py - this file documents
-  # the CURRENT recipe (v3: 20 epochs, copy_paste + mixup on) for reference, but
+  # the CURRENT recipe (v3: 20 epochs, mixup on) for reference, but
   # editing it alone won't affect a future Kaggle run unless that notebook cell is
   # updated too.
   epochs: 100
@@ -47,9 +47,16 @@ train:
 
   # --- augmentation ---
   # Small fast-moving ball => keep scale/translate lively, keep flips cheap,
-  # avoid vertical flip (pitch footage is never upside down). mixup + copy_paste
-  # were turned on for v3 specifically to help the rare ball class - ball AP went
-  # +23% on the test split vs v1. Matches the actual v3 Kaggle call.
+  # avoid vertical flip (pitch footage is never upside down). mixup was turned
+  # on for v3 alongside the extra epochs (10 -> 20); ball AP went +23% on the
+  # test split vs v1, though the two changes weren't isolated so the gain can't
+  # be attributed to mixup alone. Matches the actual v3 Kaggle call.
+  #
+  # copy_paste is NOT used: it requires per-instance segmentation masks
+  # (ultralytics no-ops it when instances only carry boxes - see
+  # augment.py CopyPaste.__call__), and this dataset is bbox-only
+  # (detection, not segmentation). Setting copy_paste > 0 here would do
+  # nothing but suggest otherwise.
   hsv_h: 0.015
   hsv_s: 0.7
   hsv_v: 0.4
@@ -64,8 +71,6 @@ train:
   mosaic: 1.0
   mixup: 0.1
   cutmix: 0.0
-  copy_paste: 0.3
-  copy_paste_mode: 0            # ultralytics default is "flip"
   auto_augment: randomaugment
   erasing: 0.4
   close_mosaic: 10             # disable mosaic for the final N epochs

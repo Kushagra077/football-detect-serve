@@ -291,13 +291,24 @@ def _to_response(
     )
 
 
+def _locked_predict(backend: DetectorBackend, images: List[np.ndarray]) -> List[List[Detection]]:
+    """backend.predict() under backend.predict_lock - see app/backends/base.py.
+
+    Runs in an executor thread; holding the lock here keeps concurrent
+    ?batch=false requests (and the batch worker, for the same backend) from
+    ever calling predict() on this instance at the same time.
+    """
+    with backend.predict_lock:
+        return backend.predict(images)
+
+
 async def _infer_unbatched(
     backend: DetectorBackend, img: np.ndarray
 ) -> tuple[List[Detection], float]:
     """Skip the queue: one image straight through backend.predict()."""
     loop = asyncio.get_running_loop()
     t0 = time.perf_counter()
-    results = await loop.run_in_executor(None, backend.predict, [img])
+    results = await loop.run_in_executor(None, _locked_predict, backend, [img])
     infer_ms = (time.perf_counter() - t0) * 1000.0
     dets = results[0] if results else []
     for det in dets:

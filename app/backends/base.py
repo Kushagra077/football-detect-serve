@@ -9,6 +9,7 @@ an earlier one was removed as dead code once both backends moved to ultralytics.
 from __future__ import annotations
 
 import abc
+import threading
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -68,6 +69,14 @@ class DetectorBackend(abc.ABC):
         self.iou = iou
         self.max_det = max_det
         self.class_names: Dict[int, str] = dict(class_names or {})
+        # Guards predict(): ultralytics' YOLO keeps mutable per-call state and is
+        # not safe to invoke from two threads at once. The unbatched serving path
+        # (app/main.py) and the batch worker (app/batching.py) both hold this
+        # lock around their call to predict(), since both can run concurrently
+        # against the same backend instance. predict() itself does not lock, so
+        # offline callers (scripts/, gradio) that only ever call it from one
+        # thread pay nothing extra.
+        self.predict_lock = threading.Lock()
 
     # ---------------- lifecycle ----------------
 
