@@ -42,6 +42,8 @@ models/*
 # reports/figures/*
 !reports/figures/.gitkeep
 reports/train_metrics.json
+# eval_map.py rewrites this scratch copy on every run alongside the named report
+reports/accuracy.json
 
 # dataset.json and the 8 canonical accuracy runs back the numbers in README -
 # committed so the repo's own claims are checkable. Any OTHER accuracy.*.json
