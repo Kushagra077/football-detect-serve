@@ -109,11 +109,30 @@ the checkpoint, and v1/v3 are both yolo26n.)
 **onnx-fp32 is 1.5x torch, free** — no accuracy cost (see table above), just a different
 runtime. **onnx-int8 is *slower* than fp32 on this hardware** — Apple Silicon (ARM) lacks
 the x86-VNNI instructions onnxruntime's INT8 kernels are tuned for, so it's paying dequant
-overhead for no speed gain. **On x86 this would likely flip**, but there is no x86 run to
-confirm it against — see [Limitations](#limitations). FP16 was measured and dropped from
-this table: on CPU it ties fp32 on accuracy and is *slower* (onnxruntime has no native
-fp16 kernels on CPU, so it upcasts and pays the cast cost) — FP16 only helps on GPU, and
-this service targets CPU.
+overhead for no speed gain. FP16 was measured and dropped from this table: on CPU it ties
+fp32 on accuracy and is *slower* (onnxruntime has no native fp16 kernels on CPU, so it
+upcasts and pays the cast cost) — FP16 only helps on GPU, and this service targets CPU.
+
+### Latency (single-request, CPU, x86_64, 2 physical cores, batch=1, v3 nano)
+
+Measured on GitHub Actions' `ubuntu-latest` runner
+(`.github/workflows/benchmark.yml`), confirming or denying the ARM-kernel-tuning
+hypothesis above instead of leaving it hedged (`reports/latency.x86.json`):
+
+![x86 latency chart](reports/figures/latency.x86.png)
+
+| backend | p50 ms | p95 ms | p99 ms | img/s |
+|---|---|---|---|---|
+| torch | 43.7 | 47.2 | 47.9 | 22.8 |
+| onnx-fp32 | 29.8 | 30.8 | 31.3 | 33.4 |
+| onnx-int8 | 57.7 | 66.0 | 69.4 | 17.0 |
+
+**The hypothesis was wrong.** onnx-int8 is *slower* than fp32 on x86 too (1.9x, worse
+than the 1.2x gap on ARM) — not an ARM-specific kernel-tuning artifact, a property of
+this model/runtime pairing on CPU generally. The 2-physical-core runner also makes every
+backend slower in absolute terms than the 8-core M2, so absolute numbers aren't
+comparable across the two tables — only the fp32-vs-int8 *ordering* is the point of
+this run, and it agrees with the M2 result.
 
 ### Load test: does batching help? (Locust, local Docker, `onnx-fp32`, 1 min/run)
 
@@ -149,9 +168,8 @@ serializing behind the same lock. Zero request failures across all six runs.
 
 ### The acceptance sentence
 
-> The ONNX runtime gave **1.5x** for free; INT8 bought **nothing** on this CPU (ARM) and
-> cost 0.03-0.06 mAP50-95 — the honest result of measuring rather than assuming, and a
-> result that plausibly reverses on x86.
+> The ONNX runtime gave **1.5x** for free; INT8 bought **nothing** on CPU — ARM or x86 —
+> and cost 0.03-0.06 mAP50-95 — the honest result of measuring rather than assuming.
 
 ## Design rules
 
@@ -211,9 +229,17 @@ No pretrained weights are distributed with this repo, on purpose — `models/` i
 gitignored, and `models/download_weights.py` has no default source to fetch from. The
 point of this project is the pipeline (data -> train -> eval -> export -> serve), not a
 checkpoint to download; run [Pipeline](#pipeline) below to produce your own
-`models/football_detection_v*.pt` from SoccerNet data before `app.main` has anything to
-serve. If you just want to see it work first, the [Live demo](#live-demo) already has
-weights loaded.
+`models/football_detection_v*.pt` from [SoccerNet](https://www.soccer-net.org/data)
+data before `app.main` has anything to serve. If you just want to see it work first, the
+[Live demo](#live-demo) already has weights loaded.
+
+**Dataset license.** SoccerNet's annotations are released under **CC BY-NC 4.0**
+(non-commercial). The broadcast videos themselves are separately gated behind an NDA —
+downloading them requires submitting SoccerNet's NDA form, and redistributing the raw
+video is prohibited by that agreement. Neither the videos nor the derived frames/labels
+are distributed in this repo (`models/`, dataset dirs are gitignored) — you must obtain
+your own SoccerNet access to reproduce the pipeline. See the
+[SoccerNet FAQ](https://www.soccer-net.org/faq) for the full terms.
 
 ## Testing
 
@@ -364,7 +390,8 @@ comparison; the Space is for checking correctness and accuracy, not speed.
 | --- | --- |
 | `reports/dataset.json` | `prepare_data.py` — per-class instance counts, label problems |
 | `reports/accuracy.<backend>.<model>.json` | `eval_map.py` |
-| `reports/latency.json`, `figures/latency.png` | `benchmark.py` |
+| `reports/latency.json`, `figures/latency.png` | `benchmark.py` (local, Apple M2) |
+| `reports/latency.x86.json`, `figures/latency.x86.png` | `benchmark.py` (`benchmark.yml` CI run, x86) |
 | `reports/loadtest/*.csv`, `*.html` | Locust |
 
 ## Limitations
@@ -386,11 +413,12 @@ comparison; the Space is for checking correctness and accuracy, not speed.
   worth optimizing for yet — folding it into `player` is a possible later simplification.
 - **One degenerate box in the raw source labels**, not introduced by conversion: one
   sequence's `gt.txt` has a `w=0` row. Left as-is rather than patched around.
-- **Latency numbers are ARM (Apple M2), not x86.** The Docker service that produced them
-  is local-only and never deployed to an x86 host, so the "INT8 is slower than fp32"
-  result is plausibly an ARM/x86 kernel-tuning artifact (onnxruntime's INT8 kernels are
-  x86-VNNI tuned), not a property of the model. There is no x86 run to confirm or deny
-  this.
+- **The x86 latency run is CI hardware, not the serving target.** `benchmark.yml` runs
+  `scripts/benchmark.py` on a GitHub Actions `ubuntu-latest` runner (2 physical cores) to
+  confirm the ARM (M2) INT8-is-slower result isn't a kernel-tuning artifact — it isn't
+  (see [Latency](#latency-single-request-cpu-x86_64-2-physical-cores-batch1-v3-nano)) —
+  but that runner is shared, variable-load infra, not the Docker image's actual deploy
+  target, so absolute x86 numbers should be read as a sanity check, not a latency SLA.
 - **`imgsz=640`, not 1280.** A documented tradeoff, not an oversight — it protects the CPU
   latency story that is the point of this phase. Recovering small/distant ball detections
   with tiled high-res inference is out of scope here.
