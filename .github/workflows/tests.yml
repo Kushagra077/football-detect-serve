@@ -24,7 +24,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install \
             pytest pytest-asyncio httpx \
-            numpy pyyaml opencv-python-headless \
+            numpy pyyaml opencv-python-headless requests \
             fastapi pydantic python-multipart prometheus-client
 
       - name: Run tests
