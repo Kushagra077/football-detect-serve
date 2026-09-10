@@ -2,7 +2,8 @@
 
 [![tests](https://github.com/Kushagra077/football-detect-serve/actions/workflows/tests.yml/badge.svg)](https://github.com/Kushagra077/football-detect-serve/actions/workflows/tests.yml)
 
-Football object detection (ball / goalkeeper / player / referee / other) — YOLO26 trained
+Football object detection (ball / goalkeeper / player / referee, plus a minor `other`
+class) — YOLO26 trained
 on broadcast football footage, exported to ONNX, quantized to INT8, and served behind a
 batching FastAPI service with a live demo on Hugging Face Spaces.
 
@@ -37,14 +38,17 @@ before/after reference.
 
 #### test split — mAP50-95, torch, 36,750 images (the real number)
 
-| model | all\* | ball | goalkeeper | player | referee | other |
+| model | all\* | ball | goalkeeper | player | referee | other† |
 |---|---|---|---|---|---|---|
-| v1 nano (10ep baseline) | 0.344 | 0.090 | 0.377 | 0.571 | 0.435 | 0.245 |
-| **v3 nano** | 0.365 | **0.111** | 0.435 | 0.594 | 0.459 | 0.225 |
-| **v2 small** | 0.391 | 0.131 | 0.484 | 0.618 | 0.492 | 0.231 |
+| v1 nano (10ep baseline) | 0.369 | 0.090 | 0.377 | 0.571 | 0.435 | 0.245 |
+| **v3 nano** | 0.400 | **0.111** | 0.435 | 0.594 | 0.459 | 0.225 |
+| **v2 small** | 0.431 | 0.131 | 0.484 | 0.618 | 0.492 | 0.231 |
 
-\* 5-class mean. `other` has 1,313 real instances here (none in val), so it's measurable —
-poorly (~0.23), but measurable.
+\* 4-class mean (ball/goalkeeper/player/referee) — the headline number. † `other` is a
+minor class, not included in `all`: it's SoccerNet-derived catch-all (sideline staff,
+etc.), thinly validated (0 instances in val, 1,313 in test), and over-predicted at
+~0.23-0.25 AP — kept in the model for completeness, not as a class the headline number
+should ride on.
 
 **v1 → v3**: ball AP **+23%** on this trustworthy split (0.090 → 0.111), every other real
 class up too — the extra epochs and `mixup` combined to help. (Two things changed at once —
@@ -376,8 +380,10 @@ comparison; the Space is for checking correctness and accuracy, not speed.
   hidden. A cleaner fix (hold out a whole match for val) isn't really available with only
   3 training matches — this is a dataset-size constraint, not just a split bug.
 - **The `other` class is thinly validated.** It has 0 instances in `val` (AP undefined
-  there) and only 1,313 in `test` — where it scores ~0.24 and both models over-predict it.
-  Worth a 4-class mAP alongside the 5-class one, or folding `other` into `player`, later.
+  there) and only 1,313 in `test` — where it scores ~0.23-0.25 and both models
+  over-predict it. Kept in the model and reported for completeness, but excluded from
+  the headline `all` mean (see [Accuracy](#accuracy)) rather than treated as a class
+  worth optimizing for yet — folding it into `player` is a possible later simplification.
 - **One degenerate box in the raw source labels**, not introduced by conversion: one
   sequence's `gt.txt` has a `w=0` row. Left as-is rather than patched around.
 - **Latency numbers are ARM (Apple M2), not x86.** The Docker service that produced them
@@ -393,5 +399,12 @@ comparison; the Space is for checking correctness and accuracy, not speed.
 
 ## License
 
-[MIT](LICENSE) — covers the code in this repository only. No training data or model
-weights are distributed here; see the repo's `.gitignore` and the Setup section above.
+[MIT](LICENSE) — covers the code in this repository only. No training data are
+distributed here; see the repo's `.gitignore` and the Setup section above.
+
+`ultralytics` is a hard runtime dependency, not an optional one — training, export,
+and both serving backends all go through it (see [Design rules](#design-rules)). It is
+licensed **AGPL-3.0**, which is separate from and unaffected by this repository's MIT
+license: this repo's own code stays MIT, but using or distributing `ultralytics` itself
+is governed by its own AGPL-3.0 terms (including its copyleft and network-use
+obligations), independent of how this repo is licensed.

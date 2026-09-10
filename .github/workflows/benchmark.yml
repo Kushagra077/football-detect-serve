@@ -1,0 +1,38 @@
+name: benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "models/football_detection_v3*"
+      - "scripts/benchmark.py"
+      - "app/backends/**"
+
+jobs:
+  latency:
+    # Full ML deps + a real x86 CPU, unlike tests.yml (which is deliberately
+    # dependency-light and never touches a real model). This is the run that
+    # produces the x86 counterpart to the README's Apple M2 (ARM) numbers.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run latency benchmark
+        run: python scripts/benchmark.py --models models/football_detection_v3.pt models/football_detection_v3.onnx models/football_detection_v3_int8.onnx
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: latency-x86
+          path: |
+            reports/latency.json
+            reports/figures/latency.png
