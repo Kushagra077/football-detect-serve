@@ -33,10 +33,15 @@ wandb/
 *.zip
 *.tar.gz
 
-# --- models: gitignored except the placeholder and the download script ---
+# --- models: gitignored except the placeholder, the download script, and the
+# currently-served v3 weights (shipped so CI can run scripts/benchmark.py on
+# an x86 runner without a training step) ---
 models/*
 !models/.gitkeep
 !models/download_weights.py
+!models/football_detection_v3.pt
+!models/football_detection_v3.onnx
+!models/football_detection_v3_int8.onnx
 
 # --- reports: keep the committed summaries, drop the noise ---
 # reports/figures/*
