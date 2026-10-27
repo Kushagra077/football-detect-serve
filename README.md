@@ -17,6 +17,12 @@ running that code, not from a spec sheet.
 
 ![sample detection](reports/figures/sample_detection.png)
 
+### 20-second demo
+
+[![football-detect-serve demo](demo/brag.gif)](demo/brag.mp4)
+
+*Click for the full video with sound ([demo/brag.mp4](demo/brag.mp4)). It's the acceptance sentence below, minus the paragraphs.*
+
 ## Results
 
 ### Accuracy
