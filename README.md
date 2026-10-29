@@ -188,6 +188,30 @@ backend slower in absolute terms than the 8-core M2, so absolute numbers aren't
 comparable across the two tables — only the fp32-vs-int8 *ordering* is the point of
 this run, and it agrees with the M2 result.
 
+### Latency of the three presets (CPU, x86_64, 2 physical cores, onnx-fp32, batch=1)
+
+The same three files the API serves, benchmarked in CI (`benchmark.yml`, GitHub's `ubuntu-latest`
+runner, each at its own input size; `reports/latency.x86.presets.json`):
+
+![x86 preset latency chart](reports/figures/latency.x86.presets.png)
+
+| preset | model | input | p50 ms | p95 ms | p99 ms | img/s |
+|---|---|---|---|---|---|---|
+| fast | v3 | 640 | 49.6 | 51.1 | 52.3 | 20.1 |
+| balanced | v7 | 960 | 110.0 | 145.1 | 149.6 | 8.7 |
+| accurate | v6 | 1280 | 194.0 | 233.0 | 237.1 | 4.9 |
+
+**The ranking holds on a different CPU.** Relative to fast, balanced costs 2.2x and accurate 3.9x
+here; on the M2 it is 2.0x and 3.7x. Batching does not help: img/s stays flat from batch 1 to 8
+for all three, so one image costs the same whether it arrives alone or in a batch of eight, and
+the cost scales with pixels.
+
+**Do not compare absolute numbers with the v3 table above.** That earlier CI run measured v3
+onnx-fp32 at 29.8 ms; this run measured the same file at 49.6 ms, on a different runner image
+(onnxruntime 1.29 vs 1.31). Shared runners vary, so only the ratios *within* one run mean
+anything. The two runs also cover different things: the earlier one compares torch / fp32 /
+int8 on v3, this one compares the three presets in fp32 only.
+
 ### Load test: does batching help? (Locust, local Docker, `onnx-fp32`, 1 min/run)
 
 ![load test chart](reports/figures/loadtest.svg)
@@ -448,6 +472,7 @@ comparison; the Space is for checking correctness and accuracy, not speed.
 | `reports/latency.json`, `figures/latency.png` | `benchmark.py` (local, Apple M2) |
 | `reports/latency.x86.json`, `figures/latency.x86.png` | `benchmark.py` (`benchmark.yml` CI run, x86) |
 | `reports/latency.presets.json` | `benchmark.py` on the v3 / v7 / v6 ONNX presets (Apple M2) |
+| `reports/latency.x86.presets.json`, `figures/latency.x86.presets.png` | `benchmark.py` on the same presets (`benchmark.yml` CI run, x86) |
 | `reports/training_curves.json` | validation mAP per epoch, copied out of the checkpoints |
 | `figures/presets_*.png`, `figures/training_curves.png` | `plot_presets.py` |
 | `figures/presets_example.png` | `render_presets.py` |
