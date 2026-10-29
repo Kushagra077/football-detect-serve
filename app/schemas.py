@@ -53,7 +53,10 @@ class HealthResponse(BaseModel):
     backend: str = Field(description="The default backend used when ?backend= is omitted.")
     backends: Dict[str, str] = Field(description="All loaded backends: name -> model path.")
     model: str
-    imgsz: int
+    imgsz: int = Field(description="Input size of the default backend.")
+    imgsz_by_backend: Dict[str, int] = Field(
+        default_factory=dict, description="Input size each loaded backend runs at (models differ)."
+    )
     classes: Dict[int, str]
     warm: bool
     uptime_s: float

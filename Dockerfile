@@ -51,11 +51,15 @@ RUN pip install --no-cache-dir \
 COPY app ./app
 COPY configs ./configs
 
-# Bake in only the three files the default registry (main.py _DEFAULT_MODELS)
-# loads: torch + onnx-fp32 + onnx-int8 on v3. Mount over /app/models to swap.
+# Bake in the files the default registry (main.py _DEFAULT_MODELS) loads: three ONNX fp32
+# presets (fast v3 / balanced v7 / accurate v6). The .meta.json sidecars carry each model's
+# input size, so every preset runs at the size it was trained at. The v3 torch and int8
+# files stay available for MODELS=... overrides. Mount over /app/models to swap.
+COPY models/football_detection_v3.onnx models/football_detection_v3.meta.json ./models/
+COPY models/football_detection_v7.onnx models/football_detection_v7.meta.json ./models/
+COPY models/football_detection_v6.onnx models/football_detection_v6.meta.json ./models/
 COPY models/football_detection_v3.pt ./models/
-COPY models/football_detection_v3.onnx ./models/
-COPY models/football_detection_v3_int8.onnx ./models/
+COPY models/football_detection_v3_int8.onnx models/football_detection_v3_int8.meta.json ./models/
 
 RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /app
 USER appuser
@@ -65,7 +69,7 @@ ENV HOME=/home/appuser \
     YOLO_CONFIG_DIR=/home/appuser/.config/Ultralytics \
     MPLCONFIGDIR=/home/appuser/.config/matplotlib
 
-ENV DEFAULT_BACKEND=onnx-fp32 \
+ENV DEFAULT_BACKEND=balanced \
     DEVICE=cpu \
     IMGSZ=640 \
     CONF=0.25 \

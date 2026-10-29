@@ -18,18 +18,20 @@ import numpy as np
 import spaces
 import torch
 
-from app.backends.base import Detection, DetectorBackend, build_backend
+from app.backends.base import Detection, DetectorBackend, build_backend, resolve_imgsz
 
 IMGSZ = int(os.getenv("IMGSZ", 640))
 CONF = float(os.getenv("CONF", 0.25))
 IOU = float(os.getenv("IOU", 0.45))
 
-# Same 3 files the local Docker service bakes in (PROGRESS.md Step 8).
+# The three speed/accuracy presets the Docker service also serves (README "Model presets").
+# The size is read from each model's export sidecar, so a preset can't run at the wrong size.
 _MODELS: Dict[str, str] = {
-    "torch": "models/football_detection_v3.pt",
-    "onnx-fp32": "models/football_detection_v3.onnx",
-    "onnx-int8": "models/football_detection_v3_int8.onnx",
+    "fast (v3, 640)": "models/football_detection_v3.onnx",
+    "balanced (v7, 960)": "models/football_detection_v7.onnx",
+    "accurate (v6, 1280)": "models/football_detection_v6.onnx",
 }
+_DEFAULT_PRESET = "balanced (v7, 960)"
 
 # Loaded lazily per backend name and cached - a Space with 16GB RAM (free CPU
 # Basic) comfortably holds all three loaded at once.
@@ -46,11 +48,12 @@ _COLORS = {
 
 def _get_backend(name: str) -> DetectorBackend:
     if name not in _CACHE:
-        kind = "torch" if name.startswith("torch") else "onnx"
+        weights = _MODELS[name]
+        imgsz, _ = resolve_imgsz(weights, None, IMGSZ)
         _CACHE[name] = build_backend(
-            kind=kind,
-            weights=_MODELS[name],
-            imgsz=IMGSZ,
+            kind="torch" if weights.endswith(".pt") else "onnx",
+            weights=weights,
+            imgsz=imgsz,
             conf=CONF,
             iou=IOU,
             device="cpu",
@@ -117,8 +120,9 @@ def predict(image: Optional[np.ndarray], backend_name: str) -> Tuple[Optional[np
 with gr.Blocks(title="football-detect-serve") as demo:
     gr.Markdown(
         "# Football Object Detection\n"
-        "Detects **ball / goalkeeper / player / referee**. Switch backends to compare "
-        "accuracy — full mAP and latency tables (measured on CPU) are in the repo README.\n\n"
+        "Detects **ball / goalkeeper / player / referee**. Switch presets to trade speed for "
+        "accuracy — full mAP and latency tables (measured on CPU) are in the repo README. "
+        "Models are for non-commercial research use.\n\n"
         "_Note: this Space runs on ZeroGPU, so every backend here may run GPU-accelerated. "
         "Relative speed on this page won't match the CPU-only benchmark table in the "
         "README — that table is the real comparison; this demo is for correctness/accuracy._"
@@ -127,7 +131,7 @@ with gr.Blocks(title="football-detect-serve") as demo:
         with gr.Column():
             image_in = gr.Image(type="numpy", label="Upload a frame")
             backend_dd = gr.Dropdown(
-                choices=list(_MODELS), value="onnx-fp32", label="Backend"
+                choices=list(_MODELS), value=_DEFAULT_PRESET, label="Preset (speed vs accuracy)"
             )
             run_btn = gr.Button("Detect", variant="primary")
         with gr.Column():

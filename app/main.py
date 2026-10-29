@@ -21,7 +21,7 @@ import socket
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import cv2
@@ -29,7 +29,7 @@ import numpy as np
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 
 from app import metrics
-from app.backends.base import Detection, DetectorBackend, build_backend
+from app.backends.base import Detection, DetectorBackend, build_backend, resolve_imgsz
 from app.batching import BatchedPredictor, QueueOverflow
 from app.schemas import (
     BoxOut,
@@ -52,41 +52,62 @@ MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", 10 * 1024 * 1024))
 # surrounding JSON syntax and the "options"/"image_url" keys.
 MAX_B64_CHARS = MAX_UPLOAD_BYTES * 4 // 3 + 1024
 
+# Three speed/accuracy presets, all ONNX fp32 (see README "Model presets"). Each model
+# runs at its own input size (read from its export sidecar), so they can share a process.
 _DEFAULT_MODELS = (
-    "torch=models/football_detection_v3.pt,"
-    "onnx-fp32=models/football_detection_v3.onnx,"
-    "onnx-int8=models/football_detection_v3_int8.onnx"
+    "fast=models/football_detection_v3.onnx,"
+    "balanced=models/football_detection_v7.onnx,"
+    "accurate=models/football_detection_v6.onnx"
 )
 
 
-def _parse_models(spec: str) -> Dict[str, str]:
-    """'name=path,name=path' -> {name: path}, order preserved."""
-    out: Dict[str, str] = {}
+def _split_size(spec: str) -> Tuple[str, Optional[int]]:
+    """'models/x.onnx@960' -> ('models/x.onnx', 960); without the suffix -> (spec, None)."""
+    path, sep, tail = spec.rpartition("@")
+    if sep and tail.strip().isdigit():
+        return path.strip(), int(tail)
+    return spec, None
+
+
+def _parse_entries(spec: str) -> Dict[str, Tuple[str, Optional[int]]]:
+    """'name=path[@imgsz],name=path' -> {name: (path, explicit imgsz or None)}, order preserved."""
+    out: Dict[str, Tuple[str, Optional[int]]] = {}
     for pair in spec.split(","):
         pair = pair.strip()
         if not pair:
             continue
         if "=" not in pair:
-            raise ValueError(f"bad MODELS entry {pair!r} (want 'name=path')")
-        name, path = pair.split("=", 1)
-        out[name.strip()] = path.strip()
+            raise ValueError(f"bad MODELS entry {pair!r} (want 'name=path' or 'name=path@imgsz')")
+        name, rest = pair.split("=", 1)
+        out[name.strip()] = _split_size(rest.strip())
     return out
 
 
-def _kind_of(name: str) -> str:
-    return "torch" if name.startswith("torch") else "onnx"
+def _parse_models(spec: str) -> Dict[str, str]:
+    """'name=path,name=path' -> {name: path}, order preserved (any '@imgsz' suffix is dropped)."""
+    return {name: path for name, (path, _) in _parse_entries(spec).items()}
+
+
+def _kind_of(path: str) -> str:
+    """Backend type from the file, so any name works: a .pt is torch, everything else onnx."""
+    return "torch" if str(path).endswith(".pt") else "onnx"
 
 
 class Settings:
     """Env-driven server settings."""
 
     def __init__(self) -> None:
-        self.models = _parse_models(os.getenv("MODELS", "").strip() or _DEFAULT_MODELS)
+        entries = _parse_entries(os.getenv("MODELS", "").strip() or _DEFAULT_MODELS)
+        self.models = {name: path for name, (path, _) in entries.items()}
         self.default_backend = os.getenv("DEFAULT_BACKEND", next(iter(self.models)))
         if self.default_backend not in self.models:
             raise ValueError(f"DEFAULT_BACKEND={self.default_backend} not in MODELS {list(self.models)}")
         self.device = os.getenv("DEVICE", "cpu")
-        self.imgsz = int(os.getenv("IMGSZ", 640))
+        self.imgsz = int(os.getenv("IMGSZ", 640))  # fallback only: each model uses its own size, see below
+        self.model_imgsz: Dict[str, int] = {}
+        self.imgsz_source: Dict[str, str] = {}
+        for name, (path, explicit) in entries.items():
+            self.model_imgsz[name], self.imgsz_source[name] = resolve_imgsz(path, explicit, self.imgsz)
         self.conf = float(os.getenv("CONF", 0.25))
         self.iou = float(os.getenv("IOU", 0.45))
         self.max_det = int(os.getenv("MAX_DET", 300))
@@ -106,11 +127,13 @@ STATE: dict = {"registry": {}, "default": SETTINGS.default_backend, "warm": Fals
 async def lifespan(app: FastAPI):
     registry: Dict[str, dict] = {}
     for name, path in SETTINGS.models.items():
-        log.info("loading backend %s (%s) from %s", name, _kind_of(name), path)
+        imgsz = SETTINGS.model_imgsz[name]
+        log.info("loading backend %s (%s) from %s at imgsz=%d (%s)",
+                 name, _kind_of(path), path, imgsz, SETTINGS.imgsz_source[name])
         backend = build_backend(
-            kind=_kind_of(name),
+            kind=_kind_of(path),
             weights=path,
-            imgsz=SETTINGS.imgsz,
+            imgsz=imgsz,
             conf=SETTINGS.conf,
             iou=SETTINGS.iou,
             max_det=SETTINGS.max_det,
@@ -126,7 +149,7 @@ async def lifespan(app: FastAPI):
         if SETTINGS.warmup_runs:
             backend.warmup(SETTINGS.warmup_runs)
         registry[name] = {"backend": backend, "predictor": predictor}
-        metrics.set_model_info(backend.name, path, SETTINGS.imgsz)
+        metrics.set_model_info(backend.name, path, imgsz)
         log.info("ready: %s -> %s classes=%s", name, backend.name, backend.class_names)
 
     STATE.update(registry=registry, warm=True, started_at=time.time())
@@ -471,7 +494,8 @@ async def healthz() -> HealthResponse:
         backend=default,
         backends={n: SETTINGS.models[n] for n in registry},
         model=SETTINGS.models[default],
-        imgsz=SETTINGS.imgsz,
+        imgsz=SETTINGS.model_imgsz[default],
+        imgsz_by_backend={n: SETTINGS.model_imgsz[n] for n in registry},
         classes=default_be.class_names,
         warm=warm,
         uptime_s=round(time.time() - STATE["started_at"], 1),

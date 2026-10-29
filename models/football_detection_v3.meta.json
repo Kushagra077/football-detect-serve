@@ -1,0 +1,29 @@
+{
+  "weights": "/Users/kushagrapandya/Desktop/football-detect-serve/models/football_detection_v3.pt",
+  "onnx": "/Users/kushagrapandya/Desktop/football-detect-serve/models/football_detection_v3.onnx",
+  "imgsz": 640,
+  "opset": 12,
+  "dynamic_batch": true,
+  "simplified": true,
+  "quantize": null,
+  "precision": "fp32",
+  "input_shape": [
+    "batch",
+    3,
+    "height",
+    "width"
+  ],
+  "output_shape": [
+    "batch",
+    300,
+    6
+  ],
+  "classes": {
+    "0": "ball",
+    "1": "goalkeeper",
+    "2": "player",
+    "3": "referee",
+    "4": "other"
+  },
+  "size_mb": 10.98
+}

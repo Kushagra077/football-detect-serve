@@ -31,7 +31,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from app.backends.base import Detection, build_backend  # noqa: E402
+from app.backends.base import Detection, build_backend, resolve_imgsz  # noqa: E402
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 IOU_THRESHOLDS = np.arange(0.5, 1.0, 0.05)  # COCO 0.50:0.95
@@ -199,6 +199,8 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=0, help="evaluate only N images (0 = all)")
     ap.add_argument("--conf", type=float, default=0.001, help="low conf: mAP needs the tail")
     ap.add_argument("--iou", type=float, default=0.7, help="NMS IoU")
+    ap.add_argument("--imgsz", type=int, default=None,
+                    help="input size (default: the model's own size, from its export sidecar or checkpoint)")
     ap.add_argument("--report", type=Path, default=ROOT / "reports/accuracy.json")
     ap.add_argument("--compare-to", type=Path, default=None, help="baseline accuracy.json to gate against")
     ap.add_argument("--max-map-drop", type=float, default=None)
@@ -250,10 +252,12 @@ def main() -> int:
         print(f"[fail] weights not found: {weights}", file=sys.stderr)
         return 2
 
+    imgsz, imgsz_source = resolve_imgsz(str(weights), args.imgsz, cfg.get("train", {}).get("imgsz", 640))
+    print(f"[info] imgsz={imgsz} ({imgsz_source})")
     backend = build_backend(
         kind=args.backend,
         weights=str(weights),
-        imgsz=cfg.get("train", {}).get("imgsz", 640),
+        imgsz=imgsz,
         conf=args.conf,
         iou=args.iou,
         max_det=cfg.get("serve", {}).get("max_det", 300),
