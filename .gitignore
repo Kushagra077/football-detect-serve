@@ -34,15 +34,22 @@ wandb/
 *.zip
 *.tar.gz
 
-# --- models: gitignored except the placeholder, the download script, and the
-# currently-served v3 weights (shipped so CI can run scripts/benchmark.py on
-# an x86 runner without a training step) ---
+# --- models: gitignored except the placeholder, the download script, and the weights
+# the three serving presets load (fast v3 / balanced v7 / accurate v6). They are shipped
+# so CI and `docker build` work from a clean clone; the .meta.json sidecars carry each
+# model's input size. Models are for non-commercial research use (see README License). ---
 models/*
 !models/.gitkeep
 !models/download_weights.py
 !models/football_detection_v3.pt
 !models/football_detection_v3.onnx
+!models/football_detection_v3.meta.json
 !models/football_detection_v3_int8.onnx
+!models/football_detection_v3_int8.meta.json
+!models/football_detection_v7.onnx
+!models/football_detection_v7.meta.json
+!models/football_detection_v6.onnx
+!models/football_detection_v6.meta.json
 
 # --- reports: keep the committed summaries, drop the noise ---
 # reports/figures/*
@@ -57,6 +64,14 @@ reports/accuracy.json
 !reports/dataset.json
 reports/accuracy.*.json
 !reports/accuracy.baseline.json
+!reports/accuracy.torch.v6.json
+!reports/accuracy.torch.v6.test.json
+!reports/accuracy.torch.v7.json
+!reports/accuracy.torch.v7.test.json
+!reports/accuracy.torch.v8.json
+!reports/accuracy.torch.v8.test.json
+!reports/accuracy.onnx.v6.fp32.json
+!reports/accuracy.onnx.v7.fp32.json
 !reports/accuracy.torch.v1.json
 !reports/accuracy.torch.v2.json
 !reports/accuracy.onnx.v1.fp32.json

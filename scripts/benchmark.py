@@ -47,7 +47,7 @@ import yaml  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from app.backends.base import DetectorBackend, build_backend  # noqa: E402
+from app.backends.base import DetectorBackend, build_backend, resolve_imgsz  # noqa: E402
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 MODEL_GLOBS = ("football_detection_v*.pt", "football_detection_v*.onnx")
@@ -193,6 +193,8 @@ def main() -> int:
     ap.add_argument("--omp-threads", type=int, default=_OMP_THREADS, help="pinned before import; recorded in the report")
     ap.add_argument("--report", type=Path, default=ROOT / "reports/latency.json")
     ap.add_argument("--figure", type=Path, default=ROOT / "reports/figures/latency.png")
+    ap.add_argument("--imgsz", type=int, default=None,
+                    help="force one input size for every model (default: each model's own size)")
     args = ap.parse_args()
 
     with args.config.open() as fh:
@@ -212,11 +214,12 @@ def main() -> int:
     results: List[dict] = []
     for kind, path in models:
         rel = path.relative_to(ROOT)
-        print(f"\n[info] {kind}: {rel}")
+        m_imgsz, source = resolve_imgsz(str(path), args.imgsz, imgsz)
+        print(f"\n[info] {kind}: {rel}  imgsz={m_imgsz} ({source})")
         backend = build_backend(
             kind=kind,
             weights=str(path),
-            imgsz=imgsz,
+            imgsz=m_imgsz,
             conf=scfg.get("conf", 0.25),
             iou=scfg.get("iou", 0.45),
             max_det=scfg.get("max_det", 300),
@@ -224,7 +227,7 @@ def main() -> int:
         )
         for batch in args.batch_sizes:
             row = bench_one(backend, images, batch, args.runs, args.warmup)
-            row.update(backend=backend.name, model=str(rel), size_mb=round(path.stat().st_size / 1e6, 2))
+            row.update(backend=backend.name, model=str(rel), imgsz=m_imgsz, size_mb=round(path.stat().st_size / 1e6, 2))
             results.append(row)
             spd = row["ultralytics_speed_ms"] or {}
             print(f"       bs={batch:<2} p50={row['p50_ms']:7.2f} p95={row['p95_ms']:7.2f} p99={row['p99_ms']:7.2f} ms  "

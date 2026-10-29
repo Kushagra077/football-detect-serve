@@ -9,9 +9,11 @@ an earlier one was removed as dead code once both backends moved to ultralytics.
 from __future__ import annotations
 
 import abc
+import json
 import threading
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -117,6 +119,36 @@ class DetectorBackend(abc.ABC):
         Callers that need distinct thresholds in one batch (see BatchedPredictor)
         group same-threshold jobs together and call predict() once per group.
         """
+
+
+def resolve_imgsz(weights: str, explicit: Optional[int] = None, default: int = 640) -> Tuple[int, str]:
+    """The input size a model should run at, and where that number came from.
+
+    Order: an explicit value, then the size recorded at export time (the
+    ``<model>.meta.json`` sidecar written by scripts/export_onnx.py), then - for a
+    .pt - the size ultralytics saved in the checkpoint at training time, then ``default``.
+    Running a model at a size it was not trained at silently costs accuracy
+    (a 1280-trained model scored at 640 looks much worse than it is), so callers
+    should prefer this over one global image size.
+    """
+    if explicit:
+        return int(explicit), "explicit"
+    try:
+        meta = json.loads(Path(weights).with_suffix(".meta.json").read_text())
+        if meta.get("imgsz"):
+            return int(meta["imgsz"]), "export sidecar"
+    except (OSError, ValueError, TypeError):
+        pass
+    if str(weights).endswith(".pt"):
+        try:
+            from ultralytics import YOLO
+
+            size = YOLO(str(weights)).overrides.get("imgsz")
+            if size:
+                return int(size), "checkpoint"
+        except Exception:  # an unreadable checkpoint is reported by the backend itself
+            pass
+    return int(default), "default"
 
 
 def build_backend(
