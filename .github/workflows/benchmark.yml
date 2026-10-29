@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "models/football_detection_v3*"
+      - "models/football_detection_*"
       - "scripts/benchmark.py"
       - "app/backends/**"
 
@@ -15,6 +15,7 @@ jobs:
     # dependency-light and never touches a real model). This is the run that
     # produces the x86 counterpart to the README's Apple M2 (ARM) numbers.
     runs-on: ubuntu-latest
+    timeout-minutes: 120  # v6 runs at 1280px on 2 cores: slow, and not measured on this runner yet
     steps:
       - uses: actions/checkout@v4
 
@@ -28,7 +29,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run latency benchmark
-        run: python scripts/benchmark.py --models models/football_detection_v3.pt models/football_detection_v3.onnx models/football_detection_v3_int8.onnx
+        run: python scripts/benchmark.py --models models/football_detection_v3.onnx models/football_detection_v7.onnx models/football_detection_v6.onnx
 
       - uses: actions/upload-artifact@v4
         with:
