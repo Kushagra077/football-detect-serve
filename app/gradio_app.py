@@ -27,15 +27,16 @@ IOU = float(os.getenv("IOU", 0.45))
 # The three v3 backends the local Docker service also bakes in (PROGRESS.md Step 8), plus two
 # larger-input ONNX models from the speed/accuracy presets: slower, more accurate (README "Model presets").
 _MODELS: Dict[str, str] = {
-    "torch": "models/football_detection_v3.pt",
-    "onnx-fp32": "models/football_detection_v3.onnx",
-    "onnx-int8": "models/football_detection_v3_int8.onnx",
+    "fast (v3, 640px) - onnx-fp32": "models/football_detection_v3.onnx",
     "balanced (v7, 960px)": "models/football_detection_v7.onnx",
     "accurate (v6, 1280px)": "models/football_detection_v6.onnx",
+    "fast (v3, 640px) - torch": "models/football_detection_v3.pt",
+    "fast (v3, 640px) - onnx-int8": "models/football_detection_v3_int8.onnx",
 }
 # Input size per model. Anything not listed (the v3 entries) runs at IMGSZ (640). A model must run at
 # the size it was trained at, or its accuracy drops.
 _IMGSZ: Dict[str, int] = {"balanced (v7, 960px)": 960, "accurate (v6, 1280px)": 1280}
+_DEFAULT_MODEL = "fast (v3, 640px) - onnx-fp32"
 
 # Loaded lazily per backend name and cached - a Space with 16GB RAM (free CPU
 # Basic) comfortably holds all three loaded at once.
@@ -52,7 +53,7 @@ _COLORS = {
 
 def _get_backend(name: str) -> DetectorBackend:
     if name not in _CACHE:
-        kind = "torch" if name.startswith("torch") else "onnx"
+        kind = "torch" if _MODELS[name].endswith(".pt") else "onnx"
         _CACHE[name] = build_backend(
             kind=kind,
             weights=_MODELS[name],
@@ -123,9 +124,9 @@ def predict(image: Optional[np.ndarray], backend_name: str) -> Tuple[Optional[np
 with gr.Blocks(title="football-detect-serve") as demo:
     gr.Markdown(
         "# Football Object Detection\n"
-        "Detects **ball / goalkeeper / player / referee**. Switch backends to compare "
+        "Detects **ball / goalkeeper / player / referee**. Pick a model to compare "
         "accuracy — full mAP and latency tables (measured on CPU) are in the repo README. "
-        "The v7 and v6 entries take larger inputs (960 and 1280 px): slower but more accurate. "
+        "fast (v3) is the quickest, balanced (v7) and accurate (v6) read larger images (960 and 1280 px): slower but more accurate. The torch and onnx-int8 rows are v3 again, only to compare runtimes. "
         "Models are for non-commercial research use.\n\n"
         "_Note: this Space runs on ZeroGPU, so every backend here may run GPU-accelerated. "
         "Relative speed on this page won't match the CPU-only benchmark table in the "
@@ -135,7 +136,7 @@ with gr.Blocks(title="football-detect-serve") as demo:
         with gr.Column():
             image_in = gr.Image(type="numpy", label="Upload a frame")
             backend_dd = gr.Dropdown(
-                choices=list(_MODELS), value="onnx-fp32", label="Backend"
+                choices=list(_MODELS), value=_DEFAULT_MODEL, label="Model"
             )
             run_btn = gr.Button("Detect", variant="primary")
         with gr.Column():
