@@ -18,20 +18,24 @@ import numpy as np
 import spaces
 import torch
 
-from app.backends.base import Detection, DetectorBackend, build_backend, resolve_imgsz
+from app.backends.base import Detection, DetectorBackend, build_backend
 
 IMGSZ = int(os.getenv("IMGSZ", 640))
 CONF = float(os.getenv("CONF", 0.25))
 IOU = float(os.getenv("IOU", 0.45))
 
-# The three speed/accuracy presets the Docker service also serves (README "Model presets").
-# The size is read from each model's export sidecar, so a preset can't run at the wrong size.
+# The three v3 backends the local Docker service also bakes in (PROGRESS.md Step 8), plus two
+# larger-input ONNX models from the speed/accuracy presets: slower, more accurate (README "Model presets").
 _MODELS: Dict[str, str] = {
-    "fast (v3, 640)": "models/football_detection_v3.onnx",
-    "balanced (v7, 960)": "models/football_detection_v7.onnx",
-    "accurate (v6, 1280)": "models/football_detection_v6.onnx",
+    "torch": "models/football_detection_v3.pt",
+    "onnx-fp32": "models/football_detection_v3.onnx",
+    "onnx-int8": "models/football_detection_v3_int8.onnx",
+    "balanced (v7, 960px)": "models/football_detection_v7.onnx",
+    "accurate (v6, 1280px)": "models/football_detection_v6.onnx",
 }
-_DEFAULT_PRESET = "balanced (v7, 960)"
+# Input size per model. Anything not listed (the v3 entries) runs at IMGSZ (640). A model must run at
+# the size it was trained at, or its accuracy drops.
+_IMGSZ: Dict[str, int] = {"balanced (v7, 960px)": 960, "accurate (v6, 1280px)": 1280}
 
 # Loaded lazily per backend name and cached - a Space with 16GB RAM (free CPU
 # Basic) comfortably holds all three loaded at once.
@@ -48,12 +52,11 @@ _COLORS = {
 
 def _get_backend(name: str) -> DetectorBackend:
     if name not in _CACHE:
-        weights = _MODELS[name]
-        imgsz, _ = resolve_imgsz(weights, None, IMGSZ)
+        kind = "torch" if name.startswith("torch") else "onnx"
         _CACHE[name] = build_backend(
-            kind="torch" if weights.endswith(".pt") else "onnx",
-            weights=weights,
-            imgsz=imgsz,
+            kind=kind,
+            weights=_MODELS[name],
+            imgsz=_IMGSZ.get(name, IMGSZ),
             conf=CONF,
             iou=IOU,
             device="cpu",
@@ -120,8 +123,9 @@ def predict(image: Optional[np.ndarray], backend_name: str) -> Tuple[Optional[np
 with gr.Blocks(title="football-detect-serve") as demo:
     gr.Markdown(
         "# Football Object Detection\n"
-        "Detects **ball / goalkeeper / player / referee**. Switch presets to trade speed for "
+        "Detects **ball / goalkeeper / player / referee**. Switch backends to compare "
         "accuracy — full mAP and latency tables (measured on CPU) are in the repo README. "
+        "The v7 and v6 entries take larger inputs (960 and 1280 px): slower but more accurate. "
         "Models are for non-commercial research use.\n\n"
         "_Note: this Space runs on ZeroGPU, so every backend here may run GPU-accelerated. "
         "Relative speed on this page won't match the CPU-only benchmark table in the "
@@ -131,7 +135,7 @@ with gr.Blocks(title="football-detect-serve") as demo:
         with gr.Column():
             image_in = gr.Image(type="numpy", label="Upload a frame")
             backend_dd = gr.Dropdown(
-                choices=list(_MODELS), value=_DEFAULT_PRESET, label="Preset (speed vs accuracy)"
+                choices=list(_MODELS), value="onnx-fp32", label="Backend"
             )
             run_btn = gr.Button("Detect", variant="primary")
         with gr.Column():
