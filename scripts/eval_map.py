@@ -33,6 +33,14 @@ sys.path.insert(0, str(ROOT))
 
 from app.backends.base import Detection, build_backend, resolve_imgsz  # noqa: E402
 
+
+def _display_path(p: Path) -> str:
+    """Repo-relative path for log lines; the absolute path if it is outside the repo (e.g. --report /tmp/x.json)."""
+    try:
+        return str(p.relative_to(ROOT))
+    except ValueError:
+        return str(p)
+
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 IOU_THRESHOLDS = np.arange(0.5, 1.0, 0.05)  # COCO 0.50:0.95
 
@@ -366,7 +374,7 @@ def main() -> int:
     report_path.write_text(json.dumps(payload, indent=2))
     tagged = report_path.with_name(f"accuracy.{backend.name}.{weights.stem}.json")
     tagged.write_text(json.dumps(payload, indent=2))
-    print(f"\n[ok  ] wrote {report_path.relative_to(ROOT)} and {tagged.name}")
+    print(f"\n[ok  ] wrote {_display_path(report_path)} and {tagged.name}")
 
     if args.compare_to:
         baseline_path = args.compare_to if args.compare_to.is_absolute() else ROOT / args.compare_to

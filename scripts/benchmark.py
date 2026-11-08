@@ -49,6 +49,14 @@ sys.path.insert(0, str(ROOT))
 
 from app.backends.base import DetectorBackend, build_backend, resolve_imgsz  # noqa: E402
 
+
+def _display_path(p: Path) -> str:
+    """Repo-relative path for log lines; the absolute path if it is outside the repo (e.g. --report /tmp/x.json)."""
+    try:
+        return str(p.relative_to(ROOT))
+    except ValueError:
+        return str(p)
+
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 MODEL_GLOBS = ("football_detection_v*.pt", "football_detection_v*.onnx")
 
@@ -189,7 +197,7 @@ def plot(results: List[dict], out: Path) -> None:
     fig.tight_layout()
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=140)
-    print(f"[ok  ] wrote {out.relative_to(ROOT)}")
+    print(f"[ok  ] wrote {_display_path(out)}")
 
 
 def main() -> int:
@@ -224,7 +232,7 @@ def main() -> int:
 
     results: List[dict] = []
     for kind, path in models:
-        rel = path.relative_to(ROOT)
+        rel = _display_path(path)
         m_imgsz, source = resolve_imgsz(str(path), args.imgsz, imgsz)
         print(f"\n[info] {kind}: {rel}  imgsz={m_imgsz} ({source})")
         backend = build_backend(
@@ -264,7 +272,7 @@ def main() -> int:
     }
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(payload, indent=2))
-    print(f"\n[ok  ] wrote {args.report.relative_to(ROOT)}")
+    print(f"\n[ok  ] wrote {_display_path(args.report)}")
 
     plot(results, args.figure)
 
