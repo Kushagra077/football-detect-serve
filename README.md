@@ -59,6 +59,19 @@ measured by `scripts/benchmark.py` with each model at its own input size (`repor
 - **v8** repeated v7 with settings from a short hyperparameter search. It was cancelled by a 12-hour session
   limit at epoch 10 of 16, and its best checkpoint (epoch 8) scored 0.423 test / 0.503 val, no better than
   v7, so it is reported in the tables but not served.
+- **v9 to v13** came after v8; all are in the tables and none is served (test 4-class mean, val in the table).
+  **v9** is the v7 recipe with the ball class weighted 2x in the loss: 0.426, ball 0.151 vs 0.140, no real gain.
+  **v10** is v6's recipe run to completion (best epoch 15): 0.461, the same as v6's epoch-15 checkpoint (0.459),
+  so the unfinished run was not leaving accuracy behind. **v11** adds a P2 (stride-4) detection head at 960 px:
+  ball AP rises to 0.161 (0.140 for v7) but the 4-class mean stays at 0.426, and it costs 49 ms against 33 ms
+  (ONNX, M2 CPU). **v12** is the small model (yolo26s) at 960 px: 0.460. **v13** is the small model at 1280 px,
+  12 epochs: 0.477, the best so far, with the best ball AP (0.199) and goalkeeper (0.529); `other` fell to 0.276,
+  a class with 1,313 test instances that is not in the headline number. The small model is about three times slower
+  than nano at the same size (98 ms at 960 px, 178 ms at 1280 px on the M2 CPU, timed on an untrained export of
+  the same architecture), so v13 is a server-side candidate, not a laptop preset.
+  Tiled inference (SAHI-style) was also tried on every 10th val frame with v7: the best tiled setup reached ball
+  AP 0.154 against 0.173 for v6 on the whole frame, at 4 to 9 times v7's latency
+  (`reports/tiling_experiment.val.json`).
 
 ### Accuracy
 
@@ -77,7 +90,7 @@ a bbox-only detection dataset — with no masks it silently no-ops in ultralytic
 left off rather than set and ignored.) v3 replaces v1; v1's numbers are kept as the
 before/after reference.
 
-Later runs changed the input size, which turned out to be the biggest lever: **v6** trained at 1280 (30 planned epochs, stopped at epoch 25 by a session limit; the epoch-15 checkpoint, the best on validation, is the one evaluated and served), **v7** at 960 (20 epochs, `scale` 0.5, `mixup` 0, `close_mosaic` 5), and **v8** repeated v7 with tuned settings and is unfinished (see [Model presets](#model-presets-speed-vs-accuracy)).
+Later runs changed the input size, which turned out to be the biggest lever: **v6** trained at 1280 (30 planned epochs, stopped at epoch 25 by a session limit; the epoch-15 checkpoint, the best on validation, is the one evaluated and served), **v7** at 960 (20 epochs, `scale` 0.5, `mixup` 0, `close_mosaic` 5), and **v8** repeated v7 with tuned settings and is unfinished (see [Model presets](#model-presets-speed-vs-accuracy)). **v9 to v13** (a ball-weighted loss, a finished 1280 run, a P2 head, and the small model at 960 and 1280) are in the tables below; none is served.
 
 #### test split — mAP50-95, torch, 36,750 images (the real number)
 
@@ -89,6 +102,11 @@ Later runs changed the input size, which turned out to be the biggest lever: **v
 | **v7 nano, 960px** | 0.430 | 0.140 | 0.457 | 0.629 | 0.494 | 0.371 |
 | v8 nano, 960px (unfinished, epoch 8 of 16) | 0.423 | 0.141 | 0.438 | 0.624 | 0.491 | 0.258 |
 | **v6 nano, 1280px** | 0.459 | 0.178 | 0.506 | 0.645 | 0.507 | 0.378 |
+| v9 nano, 960px, ball-weighted loss | 0.426 | 0.151 | 0.435 | 0.628 | 0.488 | 0.362 |
+| v10 nano, 1280px (v6 recipe, run to completion) | 0.461 | 0.183 | 0.506 | 0.646 | 0.510 | 0.397 |
+| v11 nano + P2 head, 960px | 0.426 | 0.161 | 0.422 | 0.630 | 0.490 | 0.386 |
+| v12 small, 960px | 0.460 | 0.188 | 0.483 | 0.650 | 0.521 | 0.421 |
+| v13 small, 1280px (best so far, not served) | 0.477 | 0.199 | 0.529 | 0.660 | 0.521 | 0.276 |
 
 \* 4-class mean (ball/goalkeeper/player/referee) — the headline number. † `other` is a
 minor class, not included in `all`: it's SoccerNet-derived catch-all (sideline staff,
@@ -115,6 +133,11 @@ class up too — the extra epochs and `mixup` combined to help. (Two things chan
 | **v7 nano, 960px** | torch | 0.497 | 0.146 | 0.573 | 0.652 | 0.615 |
 | v8 nano, 960px (unfinished) | torch | 0.503 | 0.139 | 0.605 | 0.654 | 0.615 |
 | **v6 nano, 1280px** | torch | 0.529 | 0.185 | 0.642 | 0.662 | 0.625 |
+| v9 nano, 960px, ball-weighted loss | torch | 0.506 | 0.145 | 0.601 | 0.656 | 0.620 |
+| v10 nano, 1280px (v6 recipe, run to completion) | torch | 0.530 | 0.195 | 0.636 | 0.662 | 0.628 |
+| v11 nano + P2 head, 960px | torch | 0.515 | 0.177 | 0.610 | 0.654 | 0.618 |
+| v12 small, 960px | torch | 0.542 | 0.204 | 0.659 | 0.672 | 0.632 |
+| v13 small, 1280px (best so far, not served) | torch | 0.550 | 0.219 | 0.664 | 0.674 | 0.643 |
 | **v7 nano, 960px** | onnx-fp32 | 0.497 | 0.146 | 0.573 | 0.652 | 0.615 |
 | **v6 nano, 1280px** | onnx-fp32 | 0.529 | 0.185 | 0.642 | 0.662 | 0.625 |
 | **v6 nano, 1280px** | onnx-int8 | 0.483 (−0.046) | 0.135 | 0.577 | 0.623 | 0.598 |
@@ -481,9 +504,10 @@ comparison; the Space is for checking correctness and accuracy, not speed.
 ## Limitations
 
 - **Short training runs.** `configs/train.yaml` targets 100 epochs; v1/v2 are 10-epoch, v3 and v7
-  are 20-epoch, v6 stopped at 25 of 30, v8 at 10 of 16. In the runs that went far enough, validation
-  accuracy stopped improving after about 15 epochs (see `figures/training_curves.png`), so more
-  epochs alone are unlikely to move the numbers much.
+  are 20-epoch, v6 stopped at 25 of 30, v8 at 10 of 16. v10 to v13 were capped by time (ultralytics' `time=`
+  overrides `epochs`), so they ran 12 to 42 epochs. In the runs that went far enough, validation
+  accuracy stopped improving after about 15 epochs (v10 and v11 peaked at epoch 15, v12 at 12, v13 at 7; see
+  `figures/training_curves.png`), so more epochs alone are unlikely to move the numbers much.
 - **Single runs, no error bars.** Every number is one training run and one evaluation. Differences
   of about 0.01 mAP (for example v7 vs v8) should not be trusted.
 - **`val` overlaps with training at the match level.** The training pool contains only

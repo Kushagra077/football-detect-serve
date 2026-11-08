@@ -1,0 +1,63 @@
+{
+  "backend": "torch",
+  "weights": "/Users/kushagrapandya/Desktop/Football CV Optimization/football-detect-serve/models/football_detection_v13.pt",
+  "split": "val",
+  "num_images": 8250,
+  "conf": 0.001,
+  "nms_iou": 0.7,
+  "eval_seconds": 632.63,
+  "overall": {
+    "map50": 0.8837023241089961,
+    "map75": 0.6143785990790627,
+    "map50_95": 0.5501078054952513,
+    "mean_precision_50": 0.3186474237591028,
+    "mean_recall_50": 0.9257877320051193
+  },
+  "per_class": {
+    "ball": {
+      "instances": 7865,
+      "predictions": 93190,
+      "precision_50": 0.06371928006410599,
+      "recall_50": 0.7549904584884644,
+      "ap50": 0.6010242126934917,
+      "ap75": 0.12117421138330674,
+      "ap50_95": 0.21942625865890047
+    },
+    "goalkeeper": {
+      "instances": 3824,
+      "predictions": 10300,
+      "precision_50": 0.35941746830940247,
+      "recall_50": 0.9680962562561035,
+      "ap50": 0.9651415419432222,
+      "ap75": 0.7990707729491976,
+      "ap50_95": 0.663971985399092
+    },
+    "player": {
+      "instances": 116862,
+      "predictions": 270060,
+      "precision_50": 0.4284455180168152,
+      "recall_50": 0.9901080131530762,
+      "ap50": 0.9852851369976997,
+      "ap75": 0.7918135172487163,
+      "ap50_95": 0.6735640493731008
+    },
+    "referee": {
+      "instances": 13242,
+      "predictions": 30990,
+      "precision_50": 0.42300742864608765,
+      "recall_50": 0.9899562001228333,
+      "ap50": 0.983358404801571,
+      "ap75": 0.7454558947350303,
+      "ap50_95": 0.6434689285499121
+    },
+    "other": {
+      "instances": 0,
+      "predictions": 3466,
+      "precision_50": NaN,
+      "recall_50": NaN,
+      "ap50": NaN,
+      "ap75": NaN,
+      "ap50_95": NaN
+    }
+  }
+}

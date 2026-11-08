@@ -70,6 +70,18 @@ reports/accuracy.*.json
 !reports/accuracy.torch.v7.test.json
 !reports/accuracy.torch.v8.json
 !reports/accuracy.torch.v8.test.json
+# v9-v13: best-checkpoint val + test runs behind the README rows (none of them served).
+# The *_last runs stay ignored scratch, like v8_last.
+!reports/accuracy.torch.v9.json
+!reports/accuracy.torch.v9.test.json
+!reports/accuracy.torch.v10.json
+!reports/accuracy.torch.v10.test.json
+!reports/accuracy.torch.v11.json
+!reports/accuracy.torch.v11.test.json
+!reports/accuracy.torch.v12.json
+!reports/accuracy.torch.v12.test.json
+!reports/accuracy.torch.v13.json
+!reports/accuracy.torch.v13.test.json
 !reports/accuracy.onnx.v6.fp32.json
 !reports/accuracy.onnx.v7.fp32.json
 !reports/accuracy.torch.v1.json
