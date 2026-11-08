@@ -53,7 +53,17 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 MODEL_GLOBS = ("football_detection_v*.pt", "football_detection_v*.onnx")
 
 
-def sample_images(cfg: dict, n: int, imgsz: int) -> List[np.ndarray]:
+SYNTHETIC_FRAME_HW = (1080, 1920)  # a 1080p 16:9 frame, the shape the dataset and the real footage have
+
+
+def sample_images(cfg: dict, n: int) -> Tuple[List[np.ndarray], str]:
+    """Frames to time the models on, and where they came from ('dataset' or 'synthetic').
+
+    The dataset is not distributed, so CI (and any clean clone) falls back to random noise. The fallback
+    must be 16:9: every model letterboxes to its own input size, and a square frame is padded to the full
+    square (1280x1280 for the 1280 model) while a real frame is padded to only 1280x736 (rect inference),
+    so square noise overstates latency by up to ~1.7x. Convolution cost does not depend on pixel values.
+    """
     import cv2
 
     root = ROOT / cfg.get("dataset", {}).get("path", "dataset")
@@ -64,9 +74,9 @@ def sample_images(cfg: dict, n: int, imgsz: int) -> List[np.ndarray]:
             if paths:
                 imgs = [im for im in (cv2.imread(str(p)) for p in paths) if im is not None]
                 if imgs:
-                    return imgs
+                    return imgs, "dataset"
     rng = np.random.default_rng(0)
-    return [rng.integers(0, 256, (imgsz, imgsz, 3), np.uint8) for _ in range(n)]
+    return [rng.integers(0, 256, (*SYNTHETIC_FRAME_HW, 3), np.uint8) for _ in range(n)], "synthetic"
 
 
 def percentiles(samples_ms: List[float]) -> Dict[str, float]:
@@ -207,9 +217,10 @@ def main() -> int:
         print("[fail] no models found. Export first: python scripts/export_onnx.py --weights models/football_detection_v3.pt", file=sys.stderr)
         return 2
 
-    images = sample_images(cfg, max(args.batch_sizes), imgsz)
+    images, frame_source = sample_images(cfg, max(args.batch_sizes))
     print(f"[info] device={args.device} imgsz={imgsz} omp_threads={args.omp_threads} "
-          f"runs={args.runs} warmup={args.warmup}  models={len(models)}")
+          f"runs={args.runs} warmup={args.warmup}  models={len(models)}  "
+          f"frames={frame_source} {images[0].shape[1]}x{images[0].shape[0]}")
 
     results: List[dict] = []
     for kind, path in models:
@@ -245,7 +256,9 @@ def main() -> int:
             "device": args.device,
             "versions": versions(),
         },
-        "settings": {"imgsz": imgsz, "runs": args.runs, "warmup": args.warmup, "batch_sizes": args.batch_sizes},
+        "settings": {"imgsz": imgsz, "runs": args.runs, "warmup": args.warmup, "batch_sizes": args.batch_sizes,
+                     "frames": {"source": frame_source, "width": int(images[0].shape[1]),
+                                "height": int(images[0].shape[0])}},
         "note": "single-request latency; concurrency 1/4/16 is measured by the Step 8 HTTP load test",
         "results": results,
     }

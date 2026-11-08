@@ -66,7 +66,9 @@ measured by `scripts/benchmark.py` with each model at its own input size (`repor
   ball AP rises to 0.161 (0.140 for v7) but the 4-class mean stays at 0.426, and it costs 49 ms against 33 ms
   (ONNX, M2 CPU). **v12** is the small model (yolo26s) at 960 px: 0.460. **v13** is the small model at 1280 px,
   12 epochs: 0.477, the best so far, with the best ball AP (0.199) and goalkeeper (0.529); `other` fell to 0.276,
-  a class with 1,313 test instances that is not in the headline number. The small model is about three times slower
+  a class with 1,313 test instances that is not in the headline number. Its last checkpoint (epoch 12, the end of
+  the shortened schedule) scores higher on test, 0.490 (ball 0.203, goalkeeper 0.558), with the same val score
+  (0.549 against 0.550), so val cannot choose between the two; the table shows the val-selected best checkpoint. The small model is about three times slower
   than nano at the same size (98 ms at 960 px, 178 ms at 1280 px on the M2 CPU, timed on an untrained export of
   the same architecture), so v13 is a server-side candidate, not a laptop preset.
   Tiled inference (SAHI-style) was also tried on every 10th val frame with v7: the best tiled setup reached ball
@@ -234,6 +236,17 @@ onnx-fp32 at 29.8 ms; this run measured the same file at 49.6 ms, on a different
 (onnxruntime 1.29 vs 1.31). Shared runners vary, so only the ratios *within* one run mean
 anything. The two runs also cover different things: the earlier one compares torch / fp32 /
 int8 on v3, this one compares the three presets in fp32 only.
+
+**What these frames were.** The CI runner has no dataset (it is not distributed), so `benchmark.py` timed random
+noise, and the fallback was a 640x640 *square* for every model. A model letterboxes its input to its own size:
+a square frame is padded to the full square (960x960 for balanced, 1280x1280 for accurate) while a real 16:9 frame
+is padded to 960x544 and 1280x736, about 1.7x fewer pixels. On the M2 the same noise costs 25.6 / 59.2 / 107 ms
+as a 640x640 square and 16.1 / 31.9 / 59.4 ms as a 1920x1080 frame (fast / balanced / accurate), so the square
+overstated latency by 1.6x to 1.85x. The absolute milliseconds in this x86 table are therefore upper bounds on
+what a real frame costs, and the ratios are slightly inflated too: balanced and accurate cost 2.2x and 3.9x of fast
+here, against about 2.0x and 3.7x with 16:9 frames. The Apple M2 table above was timed on real dataset frames.
+`benchmark.py` now falls back to 1920x1080 frames and records the frame source in its report; this table
+predates that fix and has not been re-run yet.
 
 ### Load test: does batching help? (Locust, local Docker, `onnx-fp32`, 1 min/run)
 
