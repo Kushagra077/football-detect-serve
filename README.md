@@ -222,31 +222,34 @@ runner, each at its own input size; `reports/latency.x86.presets.json`):
 
 | preset | model | input | p50 ms | p95 ms | p99 ms | img/s |
 |---|---|---|---|---|---|---|
-| fast | v3 | 640 | 49.6 | 51.1 | 52.3 | 20.1 |
-| balanced | v7 | 960 | 110.0 | 145.1 | 149.6 | 8.7 |
-| accurate | v6 | 1280 | 194.0 | 233.0 | 237.1 | 4.9 |
+| fast | v3 | 640 | 35.5 | 56.0 | 56.3 | 23.1 |
+| balanced | v7 | 960 | 84.0 | 87.0 | 89.0 | 12.8 |
+| accurate | v6 | 1280 | 129.0 | 132.0 | 135.0 | 8.3 |
 
-**The ranking holds on a different CPU.** Relative to fast, balanced costs 2.2x and accurate 3.9x
-here; on the M2 it is 2.0x and 3.7x. Batching does not help: img/s stays flat from batch 1 to 8
-for all three, so one image costs the same whether it arrives alone or in a batch of eight, and
-the cost scales with pixels.
+The frames are synthetic 1920x1080 noise (the CI runner has no dataset; `benchmark.py` records the frame source in
+its report). The ranking holds on a different CPU.
 
-**Do not compare absolute numbers with the v3 table above.** That earlier CI run measured v3
-onnx-fp32 at 29.8 ms; this run measured the same file at 49.6 ms, on a different runner image
-(onnxruntime 1.29 vs 1.31). Shared runners vary, so only the ratios *within* one run mean
-anything. The two runs also cover different things: the earlier one compares torch / fp32 /
-int8 on v3, this one compares the three presets in fp32 only.
+- **Ratios.** Balanced costs 2.4x and accurate 3.6x of fast at the median (on the M2, 2.0x and 3.7x). Read the
+  median: fast's p95 and p99 (56 ms) sit far above its p50 (35.5 ms), so some of its 100 runs were slow on the
+  shared runner, and ratios of p95s (1.6x and 2.4x) mostly measure that noise.
+- **Batching helps a little here.** Throughput goes from 23.1 to 36.8 img/s at batch 8 for fast (+59%), from 12.8
+  to 17.5 img/s at batch 4 for balanced (16.8 at batch 8), and from 8.3 to 9.2 for accurate (+11%). The previous CI
+  run of this table (square frames, an older runner image) reported flat throughput, so the size of the batching
+  gain is runner-dependent; it is one run each and should not be read more finely than that.
+- **Do not compare absolute numbers across CI runs.** v3 onnx-fp32 measured 29.8 ms in the earlier v3-only run
+  (onnxruntime 1.29), 49.6 ms in the first presets run (square frames), and 35.5 ms in this one (16:9 frames,
+  onnxruntime 1.31.1). Shared runners vary by about as much as the frame shape matters, so only ratios *within* one
+  run mean anything. The runs also cover different things: the earlier one compares torch / fp32 / int8 on v3,
+  this one compares the three presets in fp32 only.
 
-**What these frames were.** The CI runner has no dataset (it is not distributed), so `benchmark.py` timed random
-noise, and the fallback was a 640x640 *square* for every model. A model letterboxes its input to its own size:
-a square frame is padded to the full square (960x960 for balanced, 1280x1280 for accurate) while a real 16:9 frame
-is padded to 960x544 and 1280x736, about 1.7x fewer pixels. On the M2 the same noise costs 25.6 / 59.2 / 107 ms
-as a 640x640 square and 16.1 / 31.9 / 59.4 ms as a 1920x1080 frame (fast / balanced / accurate), so the square
-overstated latency by 1.6x to 1.85x. The absolute milliseconds in this x86 table are therefore upper bounds on
-what a real frame costs, and the ratios are slightly inflated too: balanced and accurate cost 2.2x and 3.9x of fast
-here, against about 2.0x and 3.7x with 16:9 frames. The Apple M2 table above was timed on real dataset frames.
-`benchmark.py` now falls back to 1920x1080 frames and records the frame source in its report; this table
-predates that fix and has not been re-run yet.
+**Why the frame shape matters.** A model letterboxes its input to its own size: a square frame is padded to the
+full square (960x960 for balanced, 1280x1280 for accurate) while a real 16:9 frame is padded to 960x544 and
+1280x736, about 1.7x fewer pixels. The first presets run used a 640x640 *square* of noise for every model. On the
+M2 the same noise costs 25.6 / 59.2 / 107 ms as a 640x640 square and 16.1 / 31.9 / 59.4 ms as a 1920x1080 frame
+(fast / balanced / accurate), so the square overstated latency by 1.6x to 1.85x there. On CI the fix lowered the
+medians by 24% to 34% (49.6 to 35.5, 110 to 84, 194 to 129 ms), a smaller drop than on the M2; runner variation
+is mixed into that, so one CI run cannot separate the two effects. The Apple M2 table above was timed on real
+dataset frames.
 
 ### Load test: does batching help? (Locust, local Docker, `onnx-fp32`, 1 min/run)
 
