@@ -31,6 +31,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from scripts._paths import display_path as _display_path  # noqa: E402
+
 
 def resolve(path: Path) -> Path:
     return path if path.is_absolute() else ROOT / path
@@ -129,7 +131,7 @@ def main() -> int:
 
     base = json.loads(baseline_path.read_text())
     print(
-        f"[base] {baseline_path.relative_to(ROOT)}  "
+        f"[base] {_display_path(baseline_path)}  "
         f"mAP50-95={base['overall']['map50_95']:.4f}  mAP50={base['overall']['map50']:.4f}"
     )
 

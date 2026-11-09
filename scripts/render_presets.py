@@ -20,6 +20,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from scripts._paths import display_path as _display_path  # noqa: E402
+
 from app.backends.base import build_backend, resolve_imgsz  # noqa: E402
 
 PRESETS = [
@@ -73,7 +75,7 @@ def main() -> int:
     out = ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(out), np.vstack(panels))
-    print(f"[ok  ] wrote {out.relative_to(ROOT)}")
+    print(f"[ok  ] wrote {_display_path(out)}")
     return 0
 
 

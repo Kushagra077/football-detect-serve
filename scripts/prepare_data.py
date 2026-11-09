@@ -28,6 +28,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from scripts._paths import display_path as _display_path  # noqa: E402
+
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 SPLITS = ("train", "val", "test")
 
@@ -297,7 +299,7 @@ def main() -> int:
             indent=2,
         )
     )
-    print(f"\n[ok  ] wrote {args.report.relative_to(ROOT)}")
+    print(f"\n[ok  ] wrote {_display_path(args.report)}")
 
     if args.strict and problem_count:
         print("[fail] --strict and label problems present", file=sys.stderr)

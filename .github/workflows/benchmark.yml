@@ -15,7 +15,7 @@ jobs:
     # dependency-light and never touches a real model). This is the run that
     # produces the x86 counterpart to the README's Apple M2 (ARM) numbers.
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # v13 (small, 1280px) is ~3x v6 on 2 cores; est. ~15 min for its 4 batch sizes, not yet measured here
+    timeout-minutes: 30  # the full four-preset run takes ~10 min (run #9); fail a hung run early
     steps:
       - uses: actions/checkout@v4
 

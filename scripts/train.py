@@ -22,6 +22,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from scripts._paths import display_path as _display_path  # noqa: E402
+
 
 def coerce(value: str):
     """Parse a CLI --set value into bool/int/float/str."""
@@ -102,10 +104,10 @@ def main() -> int:
                 target = ROOT / target
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(best, target)
-            print(f"[ok  ] copied best weights -> {target.relative_to(ROOT)}")
+            print(f"[ok  ] copied best weights -> {_display_path(target)}")
         else:
             print(
-                f"[info] best weights at {best.relative_to(ROOT)} - not copied "
+                f"[info] best weights at {_display_path(best)} - not copied "
                 f"(pass --out models/football_detection_vN.pt to copy + name it)"
             )
 
@@ -114,7 +116,7 @@ def main() -> int:
             out = ROOT / "reports/train_metrics.json"
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(json.dumps({k: float(v) for k, v in metrics.items()}, indent=2))
-            print(f"[ok  ] wrote {out.relative_to(ROOT)}")
+            print(f"[ok  ] wrote {_display_path(out)}")
     else:
         print(f"[warn] expected best.pt at {best}, not found")
 

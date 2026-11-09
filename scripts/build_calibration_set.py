@@ -33,6 +33,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from scripts._paths import display_path as _display_path  # noqa: E402
+
 SEQ_RE = re.compile(r"^(?P<seq>.+)_(?P<frame>\d{6})\.(?:jpg|jpeg|png)$", re.IGNORECASE)
 
 
@@ -139,11 +141,11 @@ def main() -> int:
     per_seq = ", ".join(f"{name}={count}" for name, count in sorted(quota.items()) if count)
     print(f"[ok  ] picked {len(picked)}/{total_available} images across {len(groups)} sequences")
     print(f"       {per_seq}")
-    print(f"[ok  ] wrote {manifest_path.relative_to(ROOT)}")
-    print(f"[ok  ] wrote {calib_yaml_path.relative_to(ROOT)}")
+    print(f"[ok  ] wrote {_display_path(manifest_path)}")
+    print(f"[ok  ] wrote {_display_path(calib_yaml_path)}")
     print(
         "\nNext: python scripts/export_onnx.py --weights <ckpt> --quantize 8 "
-        f"--data {calib_yaml_path.relative_to(ROOT)} --split train --fraction 1.0"
+        f"--data {_display_path(calib_yaml_path)} --split train --fraction 1.0"
     )
     return 0
 

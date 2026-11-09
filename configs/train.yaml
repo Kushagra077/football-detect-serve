@@ -18,12 +18,24 @@ model:
   task: detect
 
 train:
-  # v1/v2/v3 were run as a raw model.train(...) call in a Kaggle notebook
-  # (device=[0,1], multi-GPU), not through scripts/train.py - this file documents
-  # the CURRENT recipe (v3: 20 epochs, mixup on) for reference, but
-  # editing it alone won't affect a future Kaggle run unless that notebook cell is
-  # updated too.
-  epochs: 100
+  # The values below are the v3 recipe (fast preset: nano, 640, 20 epochs, mixup on). They stay at 640 on
+  # purpose: train.imgsz is also the default input size that export_onnx.py, eval_map.py and benchmark.py fall back
+  # to, so raising it here would silently change those. v1/v2/v3 and every later run were launched as a raw
+  # model.train(...) call in a Kaggle notebook (device=[0,1], 2xT4), not through scripts/train.py, so editing this
+  # file alone does not change a Kaggle run: the notebook cell is the source of truth.
+  #
+  # What the later runs changed (all other keys as below; results in README / reports/):
+  #
+  #   run  model       imgsz  epochs        batch  scale  mixup  close_mosaic  preset
+  #   v3   yolo26n.pt    640    20             16    0.7    0.1          10     fast
+  #   v7   yolo26n.pt    960    20             16    0.5    0.0           5     balanced
+  #   v6   yolo26n.pt   1280    30 (crashed)   16    0.7    0.1           7     accurate (best = epoch 15)
+  #   v13  yolo26s.pt   1280    10, time=4.5   12    0.7    0.1           3     max      (12 epochs ran, best = 7)
+  #
+  # `time=H` overrides `epochs` in ultralytics. Resolution and model size were the two levers that moved test
+  # accuracy; loss weighting, tuning, longer schedules and a P2 head did not (README, "v9 to v13").
+  # Pass --imgsz <trained size> to eval_map.py / export_onnx.py for any model not trained at 640.
+  epochs: 20
   imgsz: 640
   batch: 16
   device: 0                    # 0 | 0,1 | cpu

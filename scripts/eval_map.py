@@ -32,14 +32,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.backends.base import Detection, build_backend, resolve_imgsz  # noqa: E402
+from scripts._paths import display_path as _display_path  # noqa: E402
 
-
-def _display_path(p: Path) -> str:
-    """Repo-relative path for log lines; the absolute path if it is outside the repo (e.g. --report /tmp/x.json)."""
-    try:
-        return str(p.relative_to(ROOT))
-    except ValueError:
-        return str(p)
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 IOU_THRESHOLDS = np.arange(0.5, 1.0, 0.05)  # COCO 0.50:0.95
