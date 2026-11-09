@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch pretrained/released weights into models/ (this dir is gitignored).
+"""Fetch pretrained/released weights into models/ (mostly gitignored; .gitignore lists the files that ship).
 
 Set WEIGHTS_BASE_URL (or --base-url) to wherever your release artifacts live.
 
@@ -19,12 +19,21 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 # name -> optional sha256 ("" = skip verification)
-# v3 is the current nano (served everywhere), v2 the small; v1 kept for the
-# before/after baseline in the README.
+# The four serving presets (fast v3, balanced v7, accurate v6, max v13; each ONNX needs its .meta.json, which
+# records the input size it must run at), then v3's torch / int8 variants, then v2 (small) and v1, which are kept
+# for the before/after baselines in the README.
 ARTIFACTS = {
-    "football_detection_v3.pt": "",
     "football_detection_v3.onnx": "",
+    "football_detection_v3.meta.json": "",
+    "football_detection_v7.onnx": "",
+    "football_detection_v7.meta.json": "",
+    "football_detection_v6.onnx": "",
+    "football_detection_v6.meta.json": "",
+    "football_detection_v13.onnx": "",
+    "football_detection_v13.meta.json": "",
+    "football_detection_v3.pt": "",
     "football_detection_v3_int8.onnx": "",
+    "football_detection_v3_int8.meta.json": "",
     "football_detection_v2.pt": "",
     "football_detection_v2.onnx": "",
     "football_detection_v2_int8.onnx": "",

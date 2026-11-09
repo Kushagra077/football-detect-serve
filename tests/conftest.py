@@ -1,6 +1,7 @@
-"""Shared fixtures. No test in this suite touches real dataset content or real
-model weights - everything here is synthetic (zeros arrays, fabricated labels,
-a fake DetectorBackend), per the project's MOU constraint on dataset distribution.
+"""Shared fixtures. No test in this suite loads model weights or reads dataset images -
+everything here is synthetic (zeros arrays, fabricated labels, a fake DetectorBackend),
+per the project's constraint on dataset distribution. (A few tests do read tracked files:
+the weights' existence and sidecars, the reports and the README.)
 """
 from __future__ import annotations
 

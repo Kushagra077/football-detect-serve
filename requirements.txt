@@ -1,5 +1,6 @@
-# This is the install source for Docker/CI/HF - only what app/, scripts/ and
-# tests/ actually import, deliberately unpinned. pyproject.toml (uv) carries a
+# This is the install source for Docker/CI/HF - what app/, scripts/ and tests/
+# need (plus pillow/onnxslim/locust used by ultralytics export and bench/),
+# deliberately unpinned. pyproject.toml (uv) carries a
 # larger set on top of this for local dev: data-fetch tooling (kaggle,
 # pytubefix, yt-dlp) and experiment tracking (wandb, weave) used by
 # notebooks/, none of which serving/training-via-script needs. The two are

@@ -147,12 +147,13 @@ async def lifespan(app: FastAPI):
             max_batch_size=SETTINGS.max_batch_size,
             max_wait_ms=SETTINGS.max_wait_ms,
             max_queue_size=SETTINGS.max_queue_size,
+            label=name,
         )
         await predictor.start()
         if SETTINGS.warmup_runs:
             backend.warmup(SETTINGS.warmup_runs)
         registry[name] = {"backend": backend, "predictor": predictor}
-        metrics.set_model_info(backend.name, path, imgsz)
+        metrics.set_model_info(name, path, imgsz)
         log.info("ready: %s -> %s classes=%s", name, backend.name, backend.class_names)
 
     STATE.update(registry=registry, warm=True, started_at=time.time())
@@ -372,11 +373,12 @@ async def _infer_unbatched(
     backend: DetectorBackend,
     img: np.ndarray,
     *,
+    label: Optional[str] = None,
     conf: Optional[float] = None,
     iou: Optional[float] = None,
     max_det: Optional[int] = None,
 ) -> tuple[List[Detection], float]:
-    """Skip the queue: one image straight through backend.predict()."""
+    """Skip the queue: one image straight through backend.predict(). `label` is the metric label (registry name)."""
     loop = asyncio.get_running_loop()
     t0 = time.perf_counter()
     results = await loop.run_in_executor(None, _locked_predict, backend, [img], conf, iou, max_det)
@@ -384,7 +386,7 @@ async def _infer_unbatched(
     dets = results[0] if results else []
     for det in dets:
         metrics.DETECTIONS.labels(class_name=det.class_name).inc()
-    metrics.INFERENCE_LATENCY.labels(backend=backend.name).observe(infer_ms / 1000.0)
+    metrics.INFERENCE_LATENCY.labels(backend=label or backend.name).observe(infer_ms / 1000.0)
     return dets, infer_ms
 
 
@@ -448,7 +450,7 @@ async def predict(
             )
         else:
             detections, infer_ms = await _infer_unbatched(
-                be, img, conf=options.conf, iou=options.iou, max_det=options.max_det
+                be, img, label=name, conf=options.conf, iou=options.iou, max_det=options.max_det
             )
             batch_size = 1
 

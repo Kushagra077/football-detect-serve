@@ -37,9 +37,9 @@ DETECTIONS = Counter(
 )
 
 # --- batching ---
-# Labeled by backend: each loaded backend (torch/onnx-fp32/onnx-int8) runs its
-# own BatchedPredictor with its own queue, so an unlabeled metric here would
-# silently blend all of them into one meaningless series.
+# Labeled by the registry name (fast / balanced / accurate / max, or whatever MODELS names them): each loaded
+# model runs its own BatchedPredictor with its own queue, so an unlabeled metric here would silently blend all
+# of them into one meaningless series. (The runtime name onnx-fp32 would not do: four presets share it.)
 QUEUE_WAIT = Histogram(
     "fds_queue_wait_seconds",
     "Time a request spent waiting to be batched.",

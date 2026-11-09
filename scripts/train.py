@@ -49,7 +49,7 @@ def main() -> int:
         "--out",
         default=None,
         help="copy the trained checkpoint here, e.g. models/football_detection_v3.pt "
-        "(default: models/<run name>.pt; no copy if omitted and run name is unset)",
+        "(if omitted nothing is copied; best.pt stays in the run directory)",
     )
     ap.add_argument("--resume", action="store_true")
     ap.add_argument(

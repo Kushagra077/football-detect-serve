@@ -1,24 +1,23 @@
 """Locust load test for /predict.
 
-Closed-model (each simulated user loops request -> response -> next request),
-unlike the old k6 open-model ramp. That's the right shape here: the concurrency
-1/4/16 axis in the spec is "how many requests are in flight at once", which is
-exactly what -u (user count) drives.
+Closed-model (each simulated user loops request -> response -> next request): the concurrency
+1/4/16 axis is "how many requests are in flight at once", which is exactly what -u (user count) drives.
 
-    locust -f bench/locustfile.py --headless -u 1  -r 1  -t 30s --host http://localhost:7860 \
-        --csv reports/loadtest/c1  --html reports/loadtest/c1.html
-    locust -f bench/locustfile.py --headless -u 4  -r 4  -t 30s --host http://localhost:7860 \
-        --csv reports/loadtest/c4  --html reports/loadtest/c4.html
-    locust -f bench/locustfile.py --headless -u 16 -r 16 -t 30s --host http://localhost:7860 \
-        --csv reports/loadtest/c16 --html reports/loadtest/c16.html
+    FDS_BACKEND=fast locust -f bench/locustfile.py --headless -u 1  -r 1  -t 1m --host http://localhost:7860 \
+        --html reports/loadtest/c1_batch.html
+    FDS_BACKEND=fast locust -f bench/locustfile.py --headless -u 4  -r 4  -t 1m --host http://localhost:7860 \
+        --html reports/loadtest/c4_batch.html
+    FDS_BACKEND=fast locust -f bench/locustfile.py --headless -u 16 -r 16 -t 1m --host http://localhost:7860 \
+        --html reports/loadtest/c16_batch.html
 
-Batching on/off delta: rerun each of the three with FDS_BATCH=false and compare
-the "img/s" (Requests/s in the CSV) and p95 columns against the batch=true runs.
+Batching on/off delta: rerun each of the three with FDS_BATCH=false (and --html ..._nobatch.html) and compare
+Requests/s and the percentile columns against the batch=true runs.
 
 Env vars:
     FDS_IMAGE    path to a real frame (default: first image found under
                  dataset/images/test/)
-    FDS_BACKEND  torch | onnx-fp32 | onnx-int8 (default: server's DEFAULT_BACKEND)
+    FDS_BACKEND  a name from the server's MODELS (fast | balanced | accurate | max in the Docker image;
+                 default: the server's DEFAULT_BACKEND)
     FDS_BATCH    "true" | "false" (default: true)
 """
 from __future__ import annotations

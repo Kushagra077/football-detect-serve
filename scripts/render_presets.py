@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw one frame through the three presets, stacked, for the README.
+"""Draw one frame through the three nano presets (fast / balanced / accurate), stacked, for the README.
 
 Each preset runs at its own input size (read from its export sidecar), through the same
 build_backend -> predict path the API uses. Use a frame you are allowed to publish: the

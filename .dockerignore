@@ -27,8 +27,8 @@ bench/
 reports/
 scripts/
 
-# training artifacts. The torch backend now decodes through ultralytics, so the
-# served registry needs one .pt too -- keep v3 (the served nano), drop the rest.
+# training artifacts. The default registry is the four ONNX presets; keep only v3's .pt, which a
+# MODELS=torch=models/football_detection_v3.pt override can use, and drop the rest.
 models/*.pt
 !models/football_detection_v3.pt
 models/*.part

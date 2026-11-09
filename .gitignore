@@ -35,7 +35,8 @@ wandb/
 *.tar.gz
 
 # --- models: gitignored except the placeholder, the download script, and the weights
-# the three serving presets load (fast v3 / balanced v7 / accurate v6). They are shipped
+# the four serving presets load (fast v3 / balanced v7 / accurate v6 / max v13), plus v3's torch and int8
+# variants that MODELS= overrides and the Gradio demo use. They are shipped
 # so CI and `docker build` work from a clean clone; the .meta.json sidecars carry each
 # model's input size. Models are for non-commercial research use (see README License). ---
 models/*
@@ -60,7 +61,7 @@ reports/train_metrics.json
 # eval_map.py rewrites this scratch copy on every run alongside the named report
 reports/accuracy.json
 
-# dataset.json and the 8 canonical accuracy runs back the numbers in README -
+# dataset.json and the accuracy reports behind the README tables are
 # committed so the repo's own claims are checkable. Any OTHER accuracy.*.json
 # (stray/duplicate eval runs) stays ignored by the blanket rule below.
 !reports/dataset.json
@@ -72,8 +73,8 @@ reports/accuracy.*.json
 !reports/accuracy.torch.v7.test.json
 !reports/accuracy.torch.v8.json
 !reports/accuracy.torch.v8.test.json
-# v9-v13: best-checkpoint val + test runs behind the README rows (none of them served).
-# The *_last runs stay ignored scratch, like v8_last.
+# v9-v13: best-checkpoint val + test runs behind the README rows (only v13 is served, as `max`).
+# The other *_last runs stay ignored scratch, like v8_last; v13_last is kept because the README quotes it.
 !reports/accuracy.torch.v9.json
 !reports/accuracy.torch.v9.test.json
 !reports/accuracy.torch.v10.json
@@ -87,6 +88,9 @@ reports/accuracy.*.json
 !reports/accuracy.onnx.v6.fp32.json
 !reports/accuracy.onnx.v7.fp32.json
 !reports/accuracy.onnx.v13.fp32.json
+!reports/accuracy.onnx.v6.int8.json
+!reports/accuracy.torch.v13_last.json
+!reports/accuracy.torch.v13_last.test.json
 !reports/accuracy.torch.v1.json
 !reports/accuracy.torch.v2.json
 !reports/accuracy.onnx.v1.fp32.json

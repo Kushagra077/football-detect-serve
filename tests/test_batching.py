@@ -82,7 +82,7 @@ async def test_requests_with_matching_overrides_still_coalesce():
 
 async def test_batching_metrics_are_labeled_per_backend():
     """Guards against the bug where QUEUE_WAIT/BATCH_SIZE/QUEUE_DEPTH had no
-    labels at all: with 3 backends each running their own BatchedPredictor,
+    labels at all: with several backends each running their own BatchedPredictor,
     an unlabeled metric silently blends all of them into one meaningless
     series. Two predictors with distinct backend names must produce distinct
     label values, not one shared bucket.
@@ -132,3 +132,26 @@ async def test_queue_overflow_raises_when_full():
     first.cancel()
     with pytest.raises(asyncio.CancelledError):
         await first
+
+
+async def test_same_runtime_name_gets_separate_series_when_a_label_is_given():
+    """The four serving presets are all `onnx-fp32` at runtime; the server labels each predictor with its registry
+    name so their queue/batch metrics do not merge."""
+    from app import metrics as metrics_module
+
+    fast = BatchedPredictor(FakeBackend(weights="fake", name="onnx-fp32"), max_batch_size=8, max_wait_ms=20,
+                            max_queue_size=10, label="label-fast")
+    big = BatchedPredictor(FakeBackend(weights="fake", name="onnx-fp32"), max_batch_size=8, max_wait_ms=20,
+                           max_queue_size=10, label="label-max")
+    await fast.start()
+    await big.start()
+    try:
+        img = tiny_image()
+        await fast.predict(img)
+        await big.predict(img)
+        labels = {s.labels["backend"] for s in metrics_module.BATCH_SIZE.collect()[0].samples
+                  if s.name.endswith("_count")}
+        assert {"label-fast", "label-max"} <= labels
+    finally:
+        await fast.stop()
+        await big.stop()

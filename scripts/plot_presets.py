@@ -34,6 +34,8 @@ PRESETS = {
     "v13": ("max", 1280, "#c0392b"),  # small model (yolo26s), val-selected checkpoint; the others are nano
 }
 V8_COLOR = "#8a5cc2"
+# v9-v12 appear only in the training-curves chart (none is served), so they get muted colours of their own
+OTHER_RUN_COLORS = {"v9": "#b8a05a", "v10": "#d98cb3", "v11": "#4a90d9", "v12": "#7a9e3a"}
 TEXT = "#2b2b2b"
 
 
@@ -131,8 +133,8 @@ def curves() -> None:
     if data is None:
         print("[warn] reports/training_curves.json missing, skipped", file=sys.stderr)
         return
-    colors = {**{v: PRESETS[v][2] for v in PRESETS}, "v8": V8_COLOR}
-    fig, ax = plt.subplots(figsize=(8, 5))
+    colors = {**{v: PRESETS[v][2] for v in PRESETS}, "v8": V8_COLOR, **OTHER_RUN_COLORS}
+    fig, ax = plt.subplots(figsize=(9, 5.5))
     for v, d in data.items():
         ys = d["val_map50_95"]
         label = f"{v} @ {d['imgsz']}px" + (f" (stopped at {d['epochs_done']}/{d['planned_epochs']})"
@@ -141,7 +143,7 @@ def curves() -> None:
     ax.set_xlabel("epoch", color=TEXT)
     ax.set_ylabel("validation mAP50-95 during training (5 classes)", color=TEXT)
     ax.set_title("Training curves: accuracy flattens after about 15 epochs", loc="left", fontsize=13, color=TEXT)
-    ax.legend(frameon=False, fontsize=9)
+    ax.legend(frameon=False, fontsize=8, ncol=2)
     style(ax)
     fig.text(0.01, 0.005, "Monitoring metric only; it counts the empty 'other' class, so it is not comparable "
              "to the test numbers elsewhere.", fontsize=7.5, color="#777")

@@ -1,0 +1,36 @@
+{
+  "weights": "football_detection_v3.pt",
+  "split": "val",
+  "device": "mps",
+  "conf": 0.001,
+  "nms_iou": 0.7,
+  "max_det": 300,
+  "yolo_val_rect": "false",
+  "eval_map_report": "reports/accuracy.torch.v3.json",
+  "per_class": {
+    "ball": {
+      "eval_map": 0.09382540454668341,
+      "yolo_val": 0.08476427491010131,
+      "eval_map_minus_yolo_val": 0.009061129636582094
+    },
+    "goalkeeper": {
+      "eval_map": 0.5637250635488023,
+      "yolo_val": 0.5407432926664859,
+      "eval_map_minus_yolo_val": 0.022981770882316344
+    },
+    "player": {
+      "eval_map": 0.6292771739514053,
+      "yolo_val": 0.6094267606769664,
+      "eval_map_minus_yolo_val": 0.019850413274438816
+    },
+    "referee": {
+      "eval_map": 0.5910498146362737,
+      "yolo_val": 0.5686383048872602,
+      "eval_map_minus_yolo_val": 0.022411509749013514
+    }
+  },
+  "mean_eval_map_5class": 0.46946936417079116,
+  "mean_yolo_val": 0.4508931582852035,
+  "mean_eval_map_minus_yolo_val": 0.01857620588558767,
+  "note": "eval_map's overall mean is over the classes it scored; YOLO.val's is over the populated classes"
+}

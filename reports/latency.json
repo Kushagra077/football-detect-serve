@@ -25,7 +25,7 @@
       8
     ]
   },
-  "note": "single-request latency; concurrency 1/4/16 is measured by the Step 8 HTTP load test",
+  "note": "single-request latency; concurrency is measured by the HTTP load test (bench/locustfile.py). settings.imgsz is only the fallback size: each model runs at the size in its export sidecar, recorded in results[].imgsz where present",
   "results": [
     {
       "mean_ms": 25.415263321483508,

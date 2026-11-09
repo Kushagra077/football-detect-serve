@@ -11,13 +11,14 @@ batching FastAPI service with a live demo on Hugging Face Spaces.
 ZeroGPU — see the [Live demo](#live-demo) section below for why its numbers won't match
 the table below)
 
-The point of the repo is the path from checkpoint to endpoint: every optimization step has
-a gate, every backend is measured through the same code, and every number below came from
-running that code, not from a spec sheet.
+The point of the repo is the path from checkpoint to endpoint: every optimization step is
+checked against the one before it (ONNX against torch, INT8 against fp32), every backend is measured through the
+same code, and the numbers below came from running that code, not from a spec sheet (the few timed by hand are
+marked as such).
 
 ![the same frame through the fast, balanced and accurate presets](reports/figures/presets_example.png)
 
-*One frame from a free-licence amateur match clip (Pexels, not from the training data), cropped, run through the three presets. The accurate preset (bottom) is the only one that boxes the person in the yellow shirt, presumably the referee (red box). One frame with no ground truth: an illustration, not a metric.*
+*One frame from a free-licence amateur match clip (Pexels, not from the training data), cropped, run through the three nano presets (`max` is not shown). The accurate preset (bottom) is the only one that boxes the person in the yellow shirt, presumably the referee (red box). One frame with no ground truth: an illustration, not a metric.*
 
 ### 20-second demo
 
@@ -36,7 +37,7 @@ time. The server loads all four, and `?backend=fast|balanced|accurate|max` picks
 
 | preset | model | input size | test mAP50-95 | val mAP50-95 | ball AP (test) | latency, batch 1 (p50 / p95) | throughput, batch 8 |
 |---|---|---|---|---|---|---|---|
-| **fast** | v3 | 640 | 0.400 | 0.470 | 0.111 | 16.2 / 17.1 ms | 66 img/s |
+| **fast** | v3 | 640 | 0.400 | 0.469 | 0.111 | 16.2 / 17.1 ms | 66 img/s |
 | **balanced** | v7 | 960 | 0.430 | 0.497 | 0.140 | 32.7 / 36.7 ms | 31 img/s |
 | **accurate** | v6 | 1280 | 0.459 | 0.529 | 0.178 | 60.1 / 66.4 ms | 16 img/s |
 | **max** | v13 (small) | 1280 | 0.477 | 0.550 | 0.199 | 177.1 / 207.3 ms | 5 img/s |
@@ -47,43 +48,50 @@ evaluator for every model. Latency is ONNX fp32 on CPU (Apple M2, 4 threads, 100
 session (`reports/latency.presets.json`). `max` is the val-selected v13 checkpoint; its ONNX file matches torch
 exactly on the full val split (`reports/accuracy.onnx.v13.fp32.json`).
 
-- **The first three steps each cost about twice the time and buy about +0.03 test mAP; the fourth costs about
-  three times as much for less.** The ball gains the most (0.111 to 0.178 across the first three, +60%) but stays
+- **The first two steps (fast to balanced to accurate) each cost about twice the time and buy about +0.03 test
+  mAP; the third (accurate to max) costs about three times as much for +0.018.** The ball gains the most (0.111 to 0.178 across the first three, +60%) but stays
   the weakest class at every size. *max* adds +0.018 test mAP over *accurate* (0.459 to 0.477) and lifts the ball
   from 0.178 to 0.199. Its last checkpoint scores 0.490 on test with the same val score, so the gain over
   *accurate* is +0.018 to +0.031, not one exact number.
-- **Same network, different input size, except `max`.** fast, balanced and accurate are YOLO26 nano (a 10 MB ONNX
-  file each): v6 and v7 were trained at 1280 and 960, v3 at 640. *max* is YOLO26 small (v13, 9.9M parameters,
+- **Same network, different input size, except `max`.** fast, balanced and accurate are YOLO26 nano (a 10 to 11 MB ONNX
+  file each): v6 and v7 were trained at 1280 and 960, v3 at 640. *max* is YOLO26 small (v13, 9.95M parameters,
   a 38 MB ONNX file) at 1280.
 - **Which to use.** *fast* for real-time video on a CPU (25 fps needs about 25 img/s per stream: fast and
   balanced clear it on this machine, accurate does not). *accurate* for offline analysis, such as reviewing a
   match after it has been played. *max* for a server or a GPU, where the extra cost matters less: on a laptop CPU
-  it runs at about 6 images per second. *balanced* is the default.
-- **In Docker** (a Linux VM on the same M2, 8 CPUs; the whole request, including a 1080p JPEG upload and decode,
-  timed with `curl`, median of 20 after 3 warm-ups) the median request takes 59 / 80 / 123 / 291 ms for fast /
-  balanced / accurate / max, and the container held all four models in 1.76 GiB of RAM. An earlier test of the first
-  three with a different harness gave 42 / 60 / 103 ms and about 1 GiB; the two harnesses differ, so do not compare
-  numbers across them. In a bare process on the same machine one server with all four presets loaded held 1.6 GB.
-- **Batch size 2 is slower per image than batch 1 or 4** for all three models (cause not investigated); read
+  it runs at about 5 to 6 images per second. *balanced* is the default.
+- **In Docker** (a Linux VM on the same M2, 8 CPUs, 3.8 GiB; `scripts/measure_docker.py`,
+  `reports/docker.presets.json`) one 1080p JPEG upload takes, as the median of 20 `curl` requests after 3
+  warm-ups, 60 / 83 / 124 / 303 ms for fast / balanced / accurate / max with the default dynamic batching, and
+  42 / 61 / 105 / 275 ms with `?batch=false`. The gap is the batching window: a lone request waits up to
+  `MAX_WAIT_MS` (15 ms) for a partner that never comes, plus queue overhead. The whole request includes upload,
+  decode and response, and the model itself runs at about 1.5 to 2 times its native speed in the VM (32 / 52 / 94 /
+  266 ms server-side with batching off, against 16 / 33 / 60 / 177 ms in the table above). After 184 requests the
+  container held all four models in 1.80 GiB of RAM. In a bare process on the same machine one server with all four
+  presets loaded held 1.6 GB (timed by hand, not stored under `reports/`).
+- **Batch size 2 is slower per image than batch 1 or 4** for all four models (cause not investigated); read
   throughput from batch 4 or 8.
 - **v8** repeated v7 with settings from a short hyperparameter search. It was cancelled by a 12-hour session
-  limit at epoch 10 of 16, and its best checkpoint (epoch 8) scored 0.423 test / 0.503 val, no better than
-  v7, so it is reported in the tables but not served.
-- **v9 to v13** came after v8; all are in the tables and none is served (test 4-class mean, val in the table).
-  **v9** is the v7 recipe with the ball class weighted 2x in the loss: 0.426, ball 0.151 vs 0.140, no real gain.
-  **v10** is v6's recipe run to completion (best epoch 15): 0.461, the same as v6's epoch-15 checkpoint (0.459),
-  so the unfinished run was not leaving accuracy behind. **v11** adds a P2 (stride-4) detection head at 960 px:
-  ball AP rises to 0.161 (0.140 for v7) but the 4-class mean stays at 0.426, and it costs 49 ms against 33 ms
-  (ONNX, M2 CPU). **v12** is the small model (yolo26s) at 960 px: 0.460. **v13** is the small model at 1280 px,
+  limit at epoch 10 of 16, and its best checkpoint (epoch 8) scored 0.423 test / 0.503 val against v7's 0.430 / 0.497, a difference within run-to-run noise (about 0.007), so it
+  is reported in the tables but not served.
+- **v9 to v13** came after v8; all are in the tables, and only v13 is served (as `max`; test 4-class mean, val in
+  the table). **v9** is the v7 recipe with the ball class weighted 2x in the loss (a custom trainer in the Kaggle
+  notebook, not in this repo): 0.426, ball 0.151 vs 0.140, no real gain. **v10** repeats v6's recipe at 1280 px as a
+  time-capped 25-epoch run that finished (best epoch 15; v6 had planned 30 and stopped at 25; `close_mosaic` 7
+  instead of 10): 0.461, the same as v6's epoch-15 checkpoint (0.459), so the unfinished run was not leaving
+  accuracy behind. **v11** adds a P2 (stride-4) detection head at 960 px:
+  ball AP rises to 0.161 (0.140 for v7) but the 4-class mean stays at 0.426, and it costs 48 ms against 32 ms
+  (ONNX fp32, M2 CPU, same session; `reports/latency.other_models.json`). **v12** is the small model (yolo26s) at 960 px: 0.460. **v13** is the small model at 1280 px,
   12 epochs: 0.477, the best so far, with the best ball AP (0.199) and goalkeeper (0.529); `other` fell to 0.276,
   a class with 1,313 test instances that is not in the headline number. Its last checkpoint (epoch 12, the end of
   the shortened schedule) scores higher on test, 0.490 (ball 0.203, goalkeeper 0.558), with the same val score
   (0.549 against 0.550), so val cannot choose between the two; the table shows the val-selected best checkpoint. The small model is about three times slower
-  than nano at the same size (98 ms at 960 px, 178 ms at 1280 px on the M2 CPU, timed on an untrained export of
-  the same architecture), so v13 is a server-side candidate, not a laptop preset.
+  than nano at the same size (v7 32 ms against 98 ms for an untrained small export at 960 px; v6 59 ms against
+  180 ms at 1280 px, where v13 itself takes 177 ms; all ONNX fp32 on the M2 CPU in one session,
+  `reports/latency.other_models.json`), so v13 is a server-side candidate, not a laptop preset.
   Tiled inference (SAHI-style) was also tried on every 10th val frame with v7: the best tiled setup reached ball
-  AP 0.154 against 0.173 for v6 on the whole frame, at 4 to 9 times v7's latency
-  (`reports/tiling_experiment.val.json`).
+  AP 0.154 against 0.173 for v6 on the whole frame, at about 4 times v7's latency (the setups tried cost 4 to 9
+  times; `reports/tiling_experiment.val.json`).
 
 ### Accuracy
 
@@ -96,13 +104,13 @@ Two evaluations, because the two splits don't mean the same thing:
   **optimistically**. Kept for training-time monitoring, not as a headline result.
 
 Model lineage: **v1 nano** and **v2 small** are 10-epoch baselines. **v3 nano** is the
-current nano — 20 epochs, with `mixup=0.1` added specifically to help the rare, tiny ball
+640 px nano behind the `fast` preset — 20 epochs, with `mixup=0.1` added specifically to help the rare, tiny ball
 class. (`copy_paste` is not used: it requires per-instance segmentation masks, and this is
 a bbox-only detection dataset — with no masks it silently no-ops in ultralytics, so it's
 left off rather than set and ignored.) v3 replaces v1; v1's numbers are kept as the
 before/after reference.
 
-Later runs changed the input size, which turned out to be the biggest lever: **v6** trained at 1280 (30 planned epochs, stopped at epoch 25 by a session limit; the epoch-15 checkpoint, the best on validation, is the one evaluated and served), **v7** at 960 (20 epochs, `scale` 0.5, `mixup` 0, `close_mosaic` 5), and **v8** repeated v7 with tuned settings and is unfinished (see [Model presets](#model-presets-speed-vs-accuracy)). **v9 to v13** (a ball-weighted loss, a finished 1280 run, a P2 head, and the small model at 960 and 1280) are in the tables below; none is served.
+Later runs changed the input size, which turned out to be the biggest lever: **v6** trained at 1280 (30 planned epochs, stopped at epoch 25 by a session limit; the epoch-15 checkpoint, the best on validation, is the one evaluated and served), **v7** at 960 (20 epochs, `scale` 0.5, `mixup` 0, `close_mosaic` 5), and **v8** repeated v7 with tuned settings and is unfinished (see [Model presets](#model-presets-speed-vs-accuracy)). **v9 to v13** (a ball-weighted loss, a finished 1280 run, a P2 head, and the small model at 960 and 1280) are in the tables below; only v13 is served (as the `max` preset).
 
 #### test split — mAP50-95, torch, 36,750 images (the real number)
 
@@ -115,18 +123,19 @@ Later runs changed the input size, which turned out to be the biggest lever: **v
 | v8 nano, 960px (unfinished, epoch 8 of 16) | 0.423 | 0.141 | 0.438 | 0.624 | 0.491 | 0.258 |
 | **v6 nano, 1280px** | 0.459 | 0.178 | 0.506 | 0.645 | 0.507 | 0.378 |
 | v9 nano, 960px, ball-weighted loss | 0.426 | 0.151 | 0.435 | 0.628 | 0.488 | 0.362 |
-| v10 nano, 1280px (v6 recipe, run to completion) | 0.461 | 0.183 | 0.506 | 0.646 | 0.510 | 0.397 |
+| v10 nano, 1280px (v6 recipe, 25 epochs, finished) | 0.461 | 0.183 | 0.506 | 0.646 | 0.510 | 0.397 |
 | v11 nano + P2 head, 960px | 0.426 | 0.161 | 0.422 | 0.630 | 0.490 | 0.386 |
 | v12 small, 960px | 0.460 | 0.188 | 0.483 | 0.650 | 0.521 | 0.421 |
-| v13 small, 1280px (best so far, not served) | 0.477 | 0.199 | 0.529 | 0.660 | 0.521 | 0.276 |
+| v13 small, 1280px (best so far, the `max` preset) | 0.477 | 0.199 | 0.529 | 0.660 | 0.521 | 0.276 |
 
 \* 4-class mean (ball/goalkeeper/player/referee) — the headline number. † `other` is a
 minor class, not included in `all`: it's SoccerNet-derived catch-all (sideline staff,
-etc.), thinly validated (0 instances in val, 1,313 in test), and over-predicted at
-~0.23-0.25 AP — kept in the model for completeness, not as a class the headline number
-should ride on.
+etc.), thinly validated (0 instances in val, 1,313 in test), and over-predicted. Its test AP
+is 0.23-0.25 for v1/v2/v3 and between 0.26 and 0.42 for the later runs (v8 at 0.258 is the lowest of
+those, then v13 at 0.276); it swings from run to run, so it is kept in the model for completeness, not as a class the
+headline number should ride on.
 
-**v1 → v3**: ball AP **+23%** on this trustworthy split (0.090 → 0.111), every other real
+**v1 → v3**: ball AP **+22%** on this trustworthy split (0.090 → 0.111), every other real
 class up too — the extra epochs and `mixup` combined to help. (Two things changed at once —
 10→20 epochs *and* `mixup` — so the gain can't be cleanly attributed to either alone.)
 
@@ -136,8 +145,8 @@ class up too — the extra epochs and `mixup` combined to help. (Two things chan
 |---|---|---|---|---|---|---|
 | off-the-shelf COCO yolo26n (remapped) | torch | 0.093 | 0.013 | 0.000 | 0.361 | 0.000 |
 | v1 nano (10ep baseline) | torch | 0.427 | 0.069 | 0.475 | 0.603 | 0.560 |
-| **v3 nano** | torch | 0.470 | 0.094 | 0.564 | 0.629 | 0.591 |
-| **v3 nano** | onnx-fp32 | 0.470 | 0.094 | 0.564 | 0.629 | 0.591 |
+| **v3 nano** | torch | 0.469 | 0.094 | 0.564 | 0.629 | 0.591 |
+| **v3 nano** | onnx-fp32 | 0.469 | 0.094 | 0.564 | 0.629 | 0.591 |
 | **v3 nano** | onnx-int8 | 0.436 (−0.033) | 0.080 | 0.527 | 0.587 | 0.552 |
 | **v2 small** | torch | 0.487 | 0.129 | 0.575 | 0.639 | 0.605 |
 | v2 small | onnx-fp32 | 0.487 | 0.129 | 0.575 | 0.639 | 0.605 |
@@ -146,25 +155,25 @@ class up too — the extra epochs and `mixup` combined to help. (Two things chan
 | v8 nano, 960px (unfinished) | torch | 0.503 | 0.139 | 0.605 | 0.654 | 0.615 |
 | **v6 nano, 1280px** | torch | 0.529 | 0.185 | 0.642 | 0.662 | 0.625 |
 | v9 nano, 960px, ball-weighted loss | torch | 0.506 | 0.145 | 0.601 | 0.656 | 0.620 |
-| v10 nano, 1280px (v6 recipe, run to completion) | torch | 0.530 | 0.195 | 0.636 | 0.662 | 0.628 |
+| v10 nano, 1280px (v6 recipe, 25 epochs, finished) | torch | 0.530 | 0.195 | 0.636 | 0.662 | 0.628 |
 | v11 nano + P2 head, 960px | torch | 0.515 | 0.177 | 0.610 | 0.654 | 0.618 |
 | v12 small, 960px | torch | 0.542 | 0.204 | 0.659 | 0.672 | 0.632 |
-| v13 small, 1280px (best so far, not served) | torch | 0.550 | 0.219 | 0.664 | 0.674 | 0.643 |
+| v13 small, 1280px (best so far, the `max` preset) | torch | 0.550 | 0.219 | 0.664 | 0.674 | 0.643 |
 | **v7 nano, 960px** | onnx-fp32 | 0.497 | 0.146 | 0.573 | 0.652 | 0.615 |
 | **v6 nano, 1280px** | onnx-fp32 | 0.529 | 0.185 | 0.642 | 0.662 | 0.625 |
 | **v6 nano, 1280px** | onnx-int8 | 0.483 (−0.046) | 0.135 | 0.577 | 0.623 | 0.598 |
 
 \* 4-class mean — `other` has 0 instances in val, so it's excluded. ONNX/INT8 rows are
 val-only: they measure export fidelity and quantization cost, not generalization. The v7 and v6 fp32 ONNX
-files match torch to three decimals in every class (the export gate). INT8 was measured for v6 only and costs
-more than it did on v3 (−0.046), with no speed gain on this CPU, so the presets ship fp32.
+files match torch to three decimals in every class (the export gate). Of the higher-resolution presets only v6 was INT8-quantized: it costs
+−0.046, more than v3's −0.033, and INT8 gave no speed gain on this CPU (timed on v3 only, see Latency), so the presets ship fp32.
 
 #### val vs test: the gap is leakage, and its shape confirms it
 
-Like-for-like (4-class mean, `other` excluded): v3 drops 0.470 → 0.400 (**−15%**),
+Like-for-like (4-class mean, `other` excluded): v3 drops 0.469 → 0.400 (**−15%**),
 v1 0.427 → 0.369 (−14%), v2 0.487 → 0.431 (−11%). The drop is concentrated in
 **goalkeeper and referee** (−0.09 to −0.13 each) while **player barely moves**
-(−0.02 to −0.03). That's the signature of match-level leakage, not random variance:
+(−0.02 to −0.04). That's the signature of match-level leakage, not random variance:
 players look the same in any match, but a keeper's kit and a ref's uniform are
 match-specific — memorizing them from training only helps on a val split that reuses
 those matches. `ball` is dominated by noise at this training length.
@@ -172,17 +181,19 @@ those matches. `ball` is dominated by noise at this training length.
 - ONNX-fp32 reproduces torch to <0.001 mAP per class (val), across v1/v2/v3 — the export
   path is faithful.
 - INT8 costs 0.03-0.06 mAP50-95 (val) — v1 −0.027, v2 −0.064, v3 −0.033. On v1 the ball
-  class took the biggest relative hit (~42%); on v3 it's only ~15%, so the v3 ball
+  class took the biggest relative hit (~41%); on v3 it's only ~15%, so the v3 ball
   detector (extra epochs + `mixup`) survives quantization noticeably better.
-- v1/v2 are **10-epoch**, v3 is **20-epoch** — all still deliberately short of the
-  100-epoch `configs/train.yaml` target. Every number here moves with a real training run.
-- **Evaluator cross-check** (`scripts/crosscheck_map.py`): running ultralytics' own
-  `YOLO.val()` on v3 lands ~0.015–0.02 mAP50-95 *lower* than `eval_map.py` on both val
-  and test — a small, consistent optimistic bias, same direction on every populated class,
-  no structural disagreement (`other`, the class most likely to expose an averaging bug,
-  agrees to 0.005). The offset is almost certainly ultralytics' `rect=True` letterboxing
-  vs the square resize the serving backends use. So the tables above read a touch high in
-  absolute terms; every *relative* comparison in this section is unaffected.
+- v1/v2 are **10-epoch**, v3 is **20-epoch**: short runs. The later runs show validation accuracy flattening after
+  about 15 epochs (see Limitations), but every number here is still one run and moves with a new training run.
+- **Evaluator cross-check** (`scripts/crosscheck_map.py`, v3 only; reports in `reports/crosscheck.v3.*.json`):
+  ultralytics' own `YOLO.val()` scores v3 lower than `eval_map.py` on the same split and thresholds, by 0.019
+  mAP50-95 on val (0.451 against 0.469) and 0.015 on test (0.349 against 0.365; both means include `other`
+  on test). For ball, goalkeeper, player and referee `eval_map.py` is higher on both splits, by 0.006 to 0.035 per
+  class (referee on test, 0.035, is the one gap above the script's 0.03 flag threshold); `other` (test only) goes the
+  other way by 0.005. Letterboxing is not the cause: running `YOLO.val()` with `rect=False` changes the val mean
+  by less than 0.0001 (gap 0.0186 against 0.0185), so the source of the offset is not isolated. So the tables above may read
+  about 0.015-0.02 high against ultralytics' own number; the offset is similar across classes and both splits, so
+  comparisons between models should hold, but it was measured on v3 only.
 
 ### Latency (single-request, CPU, Apple M2 8-core, batch=1, v3 nano)
 
@@ -192,21 +203,21 @@ those matches. `ball` is dominated by noise at this training length.
 | onnx-fp32 | 16.3 | 18.7 | 20.2 | 60.1 |
 | onnx-int8 | 19.0 | 21.0 | 23.0 | 51.9 |
 
-(Within run-to-run noise of the earlier v1 numbers — latency tracks the architecture, not
-the checkpoint, and v1/v3 are both yolo26n.)
+(Latency tracks the architecture, not the checkpoint: v1 and v3 are both yolo26n.)
 
 **onnx-fp32 is 1.5x torch, free** — no accuracy cost (see table above), just a different
-runtime. **onnx-int8 is *slower* than fp32 on this hardware** — Apple Silicon (ARM) lacks
-the x86-VNNI instructions onnxruntime's INT8 kernels are tuned for, so it's paying dequant
-overhead for no speed gain. FP16 was measured and dropped from this table: on CPU it ties
+runtime. **onnx-int8 is *slower* than fp32 on this hardware** (1.17x). My first guess was that Apple
+Silicon (ARM) lacks the x86-VNNI instructions onnxruntime's INT8 kernels are tuned for; the x86 run below
+shows that guess was wrong. FP16 was measured and dropped from this table: on CPU it ties
 fp32 on accuracy and is *slower* (onnxruntime has no native fp16 kernels on CPU, so it
 upcasts and pays the cast cost) — FP16 only helps on GPU, and this service targets CPU.
 
 ### Latency (single-request, CPU, x86_64, 2 physical cores, batch=1, v3 nano)
 
-Measured on GitHub Actions' `ubuntu-latest` runner
-(`.github/workflows/benchmark.yml`), confirming or denying the ARM-kernel-tuning
-hypothesis above instead of leaving it hedged (`reports/latency.x86.json`):
+Measured on GitHub Actions' `ubuntu-latest` runner, confirming or denying the ARM-kernel-tuning
+hypothesis above instead of leaving it hedged (`reports/latency.x86.json`). This came from an earlier version of
+`.github/workflows/benchmark.yml` that timed v3's torch, fp32 and int8 files; the current workflow times the four
+presets in fp32 only (next table), so it cannot reproduce this one:
 
 ![x86 latency chart](reports/figures/latency.x86.png)
 
@@ -250,52 +261,57 @@ its report). The ranking holds on a different CPU.
   loss", not as a measured 43% penalty. The previous CI run of this table (older runner image) showed batching
   helping by up to +59%, so the batching effect is runner-dependent; it is one run each.
 - **Do not compare absolute numbers across CI runs.** v3 onnx-fp32 measured 29.8 ms in the earlier v3-only run
-  (onnxruntime 1.29), 49.6 ms in the first presets run (square frames), 35.5 ms in the second (16:9 frames) and
-  11.9 ms in this one (onnxruntime 1.31.1), all on the same `ubuntu-latest` label and the same reported platform
-  string. The report does not record the CPU model, so I can't say whether the runner pool handed out faster
-  hardware; only ratios *within* one run mean anything. The runs also cover different things: the earlier v3-only
+  (onnxruntime 1.29, a different kernel version), 49.6 ms in the first presets run (square frames), 35.5 ms in the
+  second (16:9 frames) and 11.9 ms in this one. All four used the `ubuntu-latest` label, and the three presets runs
+  report the same platform string and onnxruntime 1.31.1 yet differ by up to 4x. The report does not record the CPU model,
+  so I can't say whether the runner pool handed out faster hardware; only ratios *within* one run mean anything. The runs also cover different things: the earlier v3-only
   one compares torch / fp32 / int8, this one compares the four presets in fp32 only.
 
 **Why the frame shape matters.** A model letterboxes its input to its own size: a square frame is padded to the
 full square (960x960 for balanced, 1280x1280 for accurate) while a real 16:9 frame is padded to 960x544 and
 1280x736, about 1.7x fewer pixels. The first presets run used a 640x640 *square* of noise for every model. On the
-M2 the same noise costs 25.6 / 59.2 / 107 ms as a 640x640 square and 16.1 / 31.9 / 59.4 ms as a 1920x1080 frame
-(fast / balanced / accurate), so the square overstated latency by 1.6x to 1.85x there. On CI the fix lowered the
+M2 (timed by hand, not stored in `reports/`) the same noise costs 25.6 / 59.2 / 107 ms as a 640x640 square and 16.1 / 31.9 / 59.4 ms as a 1920x1080 frame
+(fast / balanced / accurate), so the square overstated latency by 1.6x to 1.9x there. On CI the fix lowered the
 medians of the second run by 24% to 34% (49.6 to 35.5, 110 to 84, 194 to 129 ms), a smaller drop than on the M2; runner variation
 is mixed into that, so one CI run cannot separate the two effects. The Apple M2 table above was timed on real
 dataset frames.
 
-### Load test: does batching help? (Locust, local Docker, `onnx-fp32`, 1 min/run)
+### Load test: does batching help? (Locust, local Docker, v3 `onnx-fp32` = the `fast` preset, 1 min/run)
 
 ![load test chart](reports/figures/loadtest.svg)
 
 | concurrency | batching | RPS | p50 ms | p95 ms | p99 ms |
 |---|---|---|---|---|---|
-| 1 | on | 12.6 | 73 | 120 | 180 |
-| 1 | off | 19.1 | 50 | 68 | 85 |
-| 4 | on | 16.3 | 260 | 370 | 520 |
-| 4 | off | 20.3 | 190 | 260 | 340 |
-| 16 | on | 28.2 | 540 | 670 | 1100 |
-| 16 | off | 21.1 | 750 | 1200 | 1400 |
+| 1 | on | 14.6 | 65 | 85 | 100 |
+| 1 | off | 21.5 | 43 | 63 | 89 |
+| 4 | on | 18.7 | 240 | 310 | 330 |
+| 4 | off | 21.9 | 170 | 300 | 470 |
+| 16 | on | 31.0 | 490 | 710 | 1000 |
+| 16 | off | 25.8 | 610 | 1000 | 1100 |
 
-Re-measured after fixing a real bug these numbers exposed: `?batch=false` requests were
+These six runs were made on 2026-11-09 with the commands in [Load test](#load-test) against the current Docker
+image (four presets loaded; `FDS_BACKEND=fast` sends every request to v3). An earlier set from 2026-09-06 on a
+v3-only image gave the same overall picture (batching loses at concurrency 1 and wins at 16): throughput and
+median were within about 22% of these, while tail percentiles moved by up to 44% and the concurrency-4 p99 ordering
+flipped (git history has those reports).
+
+A real bug these runs exposed, now fixed: `?batch=false` requests were
 calling `backend.predict()` straight from the executor thread pool with no synchronization,
 so concurrent nobatch requests could run on the same underlying model object at once —
 ultralytics' `YOLO` isn't thread-safe, so that's silent data-corrupting territory, not just
 a performance question. Fixed with a `predict_lock` per backend
-(`app/backends/base.py`), held by both the nobatch path and the batch worker. The batched
-arm barely moved (it was already single-threaded), but nobatch dropped 10-17% on RPS
-against the old, racier numbers, and its concurrency-16 tail latency got markedly worse
-(max response time 9.1s vs the old 3.5s) — the honest cost of requests now genuinely
-queuing for the lock instead of unsafely overlapping.
+(`app/backends/base.py`), held by both the nobatch path and the batch worker. The cost shows in the
+concurrency-16 nobatch tail: its slowest response took 9.5 s (1.4 s with batching), because requests now
+genuinely queue for the lock instead of unsafely overlapping.
 
-**The answer is still "it depends on load," not a flat yes/no.** At concurrency 1 and 4,
-batching is pure overhead — most requests never find a batch partner inside the 15ms
-`MAX_WAIT_MS` window, so they pay that wait and then run solo anyway (nobatch wins on
-every axis). At concurrency 16, batching wins outright — higher throughput (28.2 vs 21.1
-RPS) *and* lower latency at every percentile — because enough concurrent requests land
-inside the window to be grouped into one forward pass, which beats 16 single-image calls
-serializing behind the same lock. Zero request failures across all six runs.
+**The answer is still "it depends on load," not a flat yes/no.** At concurrency 1, batching is pure overhead:
+a request rarely finds a batch partner inside the 15 ms `MAX_WAIT_MS` window, so it pays that wait and then runs
+solo anyway (nobatch is faster at every percentile). At concurrency 4 the picture is the same for throughput and
+median (18.7 against 21.9 RPS, 240 against 170 ms) with p95 about equal (310 against 300 ms); batching shows the
+better p99 here (330 against 470 ms), a single-run difference I would not read as a win. At concurrency 16,
+batching wins outright: higher throughput (31.0 against 25.8 RPS) *and* lower latency at every percentile, because
+enough concurrent requests land inside the window to be grouped into one forward pass, which beats 16 single-image
+calls serializing behind the same lock. Zero request failures across all six runs.
 
 ### The acceptance sentence
 
@@ -308,14 +324,15 @@ serializing behind the same lock. Zero request failures across all six runs.
    and `onnx_backend.py` both call ultralytics' own `YOLO(...).predict()`, which knows how
    to decode YOLO26's end-to-end (NMS-free, top-k) head — a hand-rolled decoder assuming
    the classic dense anchor-grid output silently produced garbage on this architecture
-   (see git history / old PROGRESS.md entries if curious). `app/backends/base.py` now
-   holds only the shared `Detection`/`to_detections()` contract both backends convert
-   ultralytics' output through — no manual letterbox/decode step exists in this repo.
+   (the old decoder was removed). `app/backends/base.py` holds the shared
+   `Detection`/`to_detections()` contract both backends convert ultralytics' output through, the `DetectorBackend`
+   interface (with its `predict_lock`), `resolve_imgsz` and the `build_backend` factory — no manual
+   letterbox/decode step exists in this repo.
 2. **One evaluator for every backend.** `scripts/eval_map.py` computes COCO-style AP
    itself for torch and ONNX alike through the shared `DetectorBackend.predict()`
    interface, so comparing backends never means comparing two different measurement
    methods. It's cross-checked against ultralytics' own `YOLO.val()` via
-   `scripts/crosscheck_map.py` — they agree to ~0.02 mAP50-95 (see Accuracy).
+   `scripts/crosscheck_map.py` — their means differ by 0.015-0.02 mAP50-95 (see Accuracy).
 3. **Parity via the same evaluator, not a separate raw-tensor diff.** ONNX-vs-torch
    fidelity is checked by running `eval_map.py` on both and comparing per-class mAP to
    3 decimal places, not by diffing raw model output tensors (which YOLO26's end-to-end
@@ -343,12 +360,28 @@ scripts/eval_map.py           per-class mAP for ANY backend, one code path
 scripts/crosscheck_map.py     eval_map.py vs ultralytics YOLO.val() - evaluator sanity check
 scripts/benchmark.py          single-request latency harness -> reports/latency.json (each model at its own size)
 scripts/plot_presets.py       speed/accuracy, per-class and training-curve charts, from the report files
-scripts/render_presets.py     one frame through the three presets, side by side
+scripts/render_presets.py     one frame through the three nano presets, stacked (fast / balanced / accurate)
+scripts/measure_docker.py      Docker image: per-preset request time, RAM, image size -> reports/docker.presets.json
+scripts/extract_curves.py     validation mAP per epoch out of checkpoints -> reports/training_curves.json
+scripts/tile_eval.py          the tiled (SAHI-style) inference experiment -> reports/tiling_experiment.val.json
+scripts/plot_loadtest.py      reports/loadtest/*.html -> figures/loadtest.svg
+scripts/_paths.py             shared display_path() helper for the scripts' log lines
 app/main.py                   FastAPI: /predict /healthz /metrics, multi-backend registry
 app/batching.py                asyncio queue + max-wait window
+app/metrics.py                 Prometheus metrics (fds_*), labeled by the registry name
+app/schemas.py                 request / response models
 app/backends/                  base (contract) + torch + onnx (fp32/fp16/int8)
-app/gradio_app.py              HF Space demo - calls build_backend() directly, no FastAPI
+app/gradio_app.py              Detect tab of the HF Space - calls build_backend() directly, no FastAPI
 bench/locustfile.py            load test: concurrency x batching on/off
+Dockerfile, .dockerignore      the local serving image (four presets baked in)
+requirements.txt, pyproject.toml   install lists (Docker/CI vs local dev; they differ on purpose)
+models/                        the four preset ONNX files + sidecars, v3 .pt / int8, download_weights.py
+reports/                       every number quoted in this README (see Reports)
+demo/                          the 20-second demo video
+.github/workflows/             tests.yml (pytest) and benchmark.yml (x86 latency, manual or on model changes)
+tests/                         pytest suite (fake backend, no weights; see Testing)
+notebooks/                     dataset download, MOT -> YOLO conversion check, and a 1-epoch local smoke-test training run
+                               (the real v1-v13 runs were Kaggle notebooks that are not in the repo)
 ```
 
 ## Setup
@@ -375,11 +408,12 @@ pytest -v
 ```
 
 `tests/` covers the pure logic — batching, metric math, label validation, the API's
-error paths — through a fake `DetectorBackend` (`tests/conftest.py`). No real model
-weights, ML deps (torch/ultralytics/onnxruntime), or dataset content are ever touched,
-so the suite runs in about a second and needs nothing beyond what's already installed
-for serving. Runs automatically on every push via GitHub Actions
-(`.github/workflows/tests.yml`) — that's the badge at the top of this file.
+error paths — through a fake `DetectorBackend` (`tests/conftest.py`). No test loads model
+weights, imports ML deps (torch/ultralytics/onnxruntime) or reads dataset images, so the suite runs in about
+a second and needs nothing beyond what's already installed for serving. A few tests only check that tracked
+files agree with each other: the four presets are declared consistently (`test_presets.py`) and every number in
+the README tables matches its report (`test_readme_numbers.py`). Runs automatically on every push to `main` and on
+every pull request via GitHub Actions (`.github/workflows/tests.yml`) — that's the badge at the top of this file.
 
 ## Pipeline
 
@@ -389,33 +423,38 @@ python scripts/convert_mot_to_yolo.py --src <path-to-raw-mot-data>
 python scripts/prepare_data.py --skip-download --out dataset
 
 # 2. train (hyperparameters in configs/train.yaml)
-# NOTE: the actual v1/v2/v3 checkpoints were trained via a raw model.train(...)
+# NOTE: the actual v1 to v13 checkpoints were trained via a raw model.train(...)
 # call in a Kaggle notebook (multi-GPU), not through this script - configs/train.yaml
 # documents the current (v3) recipe for reference, but editing it does not affect a
 # Kaggle run. scripts/train.py + this command is the from-scratch reproduction path.
-# configs/train.yaml targets 100 epochs; v3 is a 20-epoch run.
+# configs/train.yaml holds the v3 recipe (20 epochs) and a table of how v7, v6 and v13 differed.
 python scripts/train.py --weights yolo26n.pt --out models/football_detection_v3.pt --set epochs=20
 
 # 3. accuracy (one code path for every backend). --split test is the trustworthy number,
 #    --split val (default) is training-time monitoring only - see Results.
 python scripts/eval_map.py --backend torch --weights models/football_detection_v3.pt --split test
-# optional: sanity-check eval_map.py against ultralytics' own evaluator (~0.02 mAP agreement)
+# optional: sanity-check eval_map.py against ultralytics' own evaluator (means differ by about 0.015-0.02 mAP)
 python scripts/crosscheck_map.py --weights models/football_detection_v3.pt --split test --device mps
 
 # 4. export: fp32, fp16, int8. int8 calibrates on a curated, shuffled,
 #    cross-sequence sample - NOT `--split train --fraction 0.01` directly,
 #    which slices ultralytics' alphabetically-sorted file list and ends up as
 #    the first ~345 frames of one clip (see build_calibration_set.py).
-#    Run --quantize none LAST - the quantized exports reuse the base filename (see below).
+#    Run --quantize none LAST: ultralytics writes every export to <name>.onnx first and the script then renames
+#    it to _fp16 / _int8, so a quantized export overwrites an existing fp32 file.
 python scripts/build_calibration_set.py
 python scripts/export_onnx.py --weights models/football_detection_v3.pt --quantize 16
 python scripts/export_onnx.py --weights models/football_detection_v3.pt --quantize 8 \
     --data dataset/calib_data.yaml --split train --fraction 1.0
 python scripts/export_onnx.py --weights models/football_detection_v3.pt --quantize none
 
-# 5. GATE — onnx-fp32 must match torch mAP to ~0.001/class; int8 drop must be sane, not collapsed
-python scripts/eval_map.py --backend onnx --weights models/football_detection_v3.onnx
-python scripts/eval_map.py --backend onnx --weights models/football_detection_v3_int8.onnx
+# 5. CHECK — onnx-fp32 should match torch to ~0.001 mAP per class; read the int8 drop and judge it.
+#    --compare-to prints the drop against a baseline report; no pass/fail threshold is set (add --max-map-drop <x>
+#    to gate on one, see configs/train.yaml's quantize: block for why none is published).
+python scripts/eval_map.py --backend onnx --weights models/football_detection_v3.onnx \
+    --compare-to reports/accuracy.torch.v3.json
+python scripts/eval_map.py --backend onnx --weights models/football_detection_v3_int8.onnx \
+    --compare-to reports/accuracy.onnx.v3.fp32.json
 
 # 6. single-request latency across backends and batch sizes
 python scripts/benchmark.py
@@ -439,11 +478,14 @@ the model, or set with a suffix (`MODELS="x=models/m.onnx@960"`). The backend ty
 | `MODELS` | `fast` (v3) + `balanced` (v7) + `accurate` (v6) + `max` (v13), ONNX fp32 | `name=path[@imgsz],name=path,...` |
 | `DEFAULT_BACKEND` | first entry in `MODELS` (the Docker image sets `balanced`) | used when `?backend=` is omitted |
 | `DEVICE` | `cpu` | |
-| `IMGSZ` | `640` | fallback only, for a model with neither a sidecar nor an `@size` |
+| `IMGSZ` | `640` | fallback only, for a model with no `@size`, no sidecar and (for a `.pt`) no size saved in the checkpoint |
 | `CONF` / `IOU` / `MAX_DET` | `0.25` / `0.45` / `300` | postprocess defaults, overridable per request |
 | `MAX_BATCH_SIZE` | `8` | dynamic batch cap |
 | `MAX_WAIT_MS` | `15` | how long a request waits to be batched |
 | `MAX_QUEUE_SIZE` | `256` | overflow returns 503 rather than queueing forever |
+| `WARMUP_RUNS` | `3` | dummy predictions per model at start-up |
+| `MAX_UPLOAD_BYTES` | `10485760` (10 MiB) | upload cap; the base64 JSON body gets a cap 4/3 larger |
+| `LOG_LEVEL` / `HOST` / `PORT` | `INFO` / `0.0.0.0` / `7860` | `HOST` and `PORT` only apply when started with `python -m app.main` (the Docker image uses `PORT`) |
 
 ### Endpoints
 
@@ -461,13 +503,16 @@ curl -sS localhost:7860/metrics | grep fds_   # per-backend counters/histograms
 
 `/predict` returns boxes in original image coordinates plus `inference_ms`, `total_ms`,
 `batch_size` and `batched` — the gap between `inference_ms` and `total_ms` is decode plus
-(if `batched=true`) queue wait.
+(if `batched=true`) queue wait, plus any `image_url` download. When batched, `inference_ms` is the whole forward
+pass of the group, not a per-image time; with `?batch=false` it also includes the wait for the backend's lock.
 
 ### Batching
 
 One worker task per backend drains an asyncio queue and fires a forward pass as soon as
 either `MAX_BATCH_SIZE` requests are ready or `MAX_WAIT_MS` has passed since the first one
-arrived. `?batch=false` skips the queue entirely for a direct comparison. State is
+arrived. Requests that carry different `conf` / `iou` / `max_det` overrides cannot share a forward pass, so a
+collected batch is split into one pass per distinct setting. `?batch=false` skips the queue entirely for a direct
+comparison. State is
 per-process, so run `--workers 1` and scale with replicas, not worker count.
 
 ## Docker
@@ -484,30 +529,35 @@ docker run --rm -p 7860:7860 football-detect-serve:local
 
 The image serves the four presets (fast / balanced / accurate / max) by default. Both backends
 decode through ultralytics (see Design rules), so it includes torch + ultralytics, not just
-onnxruntime: 2.79 GB on disk with `max` (about 2.6 GB before). With all four presets loaded the container used
-1.76 GiB of RAM after 80 requests (about 1 GiB with the first three, in an earlier test), inside a 3-4 GB
-container budget.
+onnxruntime: 2.79 GB on disk. With all four presets loaded the container used 1.80 GiB of RAM after 184 requests,
+inside the 3.8 GiB Docker Desktop VM it was measured in (`reports/docker.presets.json`).
 
 ## Load test
 
 ```bash
-locust -f bench/locustfile.py --headless -u 16 -r 16 -t 1m \
+# FDS_BACKEND=fast pins v3 (the model the saved reports measured); without it the server's default (balanced) is used.
+# Locust sends one real frame: by default the first image under dataset/images/test/ (not distributed, see Setup),
+# so on a clean clone also set FDS_IMAGE=path/to/frame.jpg.
+FDS_BACKEND=fast locust -f bench/locustfile.py --headless -u 16 -r 16 -t 1m \
     --host http://localhost:7860 --html reports/loadtest/c16_batch.html
 
-FDS_BATCH=false locust -f bench/locustfile.py --headless -u 16 -r 16 -t 1m \
+FDS_BACKEND=fast FDS_BATCH=false locust -f bench/locustfile.py --headless -u 16 -r 16 -t 1m \
     --host http://localhost:7860 --html reports/loadtest/c16_nobatch.html
 ```
 
 Or drop `--headless` for the interactive web UI at `localhost:8089`. `FDS_IMAGE` /
 `FDS_BACKEND` / `FDS_BATCH` env vars control the request; see `bench/locustfile.py` for
-details. Six HTML reports (concurrency 1/4/16 x batching on/off) are in
+details. Six HTML reports (concurrency 1/4/16 x batching on/off, v3 only) are in
 `reports/loadtest/`.
 
 ## Live demo
 
-The [HF Space](https://huggingface.co/spaces/Kushagra77/football-detect-serve) is a
+The Detect tab of the [HF Space](https://huggingface.co/spaces/Kushagra77/football-detect-serve) is a
 Gradio app (`app/gradio_app.py`) that calls `build_backend()` directly — no FastAPI, no
-batching queue, since it's a low-traffic demo, not the thing under load test.
+batching queue, since it's a low-traffic demo, not the thing under load test. The Space's own entry point is a
+two-tab hub: besides this detector it hosts a separate video-tracking tab from the
+[football-team-tracker](https://github.com/Kushagra77/football-team-tracker) repo, which is not part of this
+repository (tracking stays out of scope here).
 
 HF's free tier only offers **ZeroGPU** hardware (not standalone CPU), so every backend in
 the demo runs through one `@spaces.GPU`-wrapped call and *may* execute GPU-accelerated —
@@ -522,19 +572,23 @@ comparison; the Space is for checking correctness and accuracy, not speed.
 | File | Written by |
 | --- | --- |
 | `reports/dataset.json` | `prepare_data.py` — per-class instance counts, label problems |
-| `reports/accuracy.<backend>.<model>.json` | `eval_map.py` |
+| `reports/accuracy.<backend>.<model>.json`, `accuracy.torch.v<N>[.test].json` | `eval_map.py` writes `accuracy.<backend>.<weights stem>.json` (no split in the name, so a `--split test` run overwrites a val one); the committed `v<N>` / `.test` names are those files renamed by hand. `v13_last` is the last-epoch checkpoint of v13 (the 0.490 / 0.549 figures) |
 | `reports/latency.json`, `figures/latency.png` | `benchmark.py` (local, Apple M2) |
-| `reports/latency.x86.json`, `figures/latency.x86.png` | `benchmark.py` (`benchmark.yml` CI run, x86) |
+| `reports/latency.x86.json`, `figures/latency.x86.png` | `benchmark.py` on v3's torch / fp32 / int8 files, from an earlier `benchmark.yml` CI run (x86); the workflow now times the four presets, see the next rows |
 | `reports/latency.presets.json` | `benchmark.py` on the v3 / v7 / v6 / v13 ONNX presets (Apple M2) |
-| `reports/latency.x86.presets.json`, `figures/latency.x86.presets.png` | `benchmark.py` on the same presets (`benchmark.yml` CI run, x86) |
-| `reports/training_curves.json` | validation mAP per epoch, copied out of the checkpoints |
-| `figures/presets_*.png`, `figures/training_curves.png` | `plot_presets.py` |
+| `reports/docker.presets.json` | `measure_docker.py` (the four presets inside the Docker image: request time, RAM, image size) |
+| `reports/latency.other_models.json` | `benchmark.py` batch 1 on v7, v11 (P2 head), v6, v13 and untrained yolo26s exports at 960 / 1280 (Apple M2, one session) |
+| `reports/latency.x86.presets.json`, `figures/latency.x86.presets.png` | `benchmark.py` on the same presets (the `benchmark.yml` artifact, saved under this name; x86) |
+| `reports/tiling_experiment.val.json` | `tile_eval.py` — the tiled-inference experiment on every 10th val frame |
+| `reports/crosscheck.v3.val.json`, `.val.rect_false.json`, `.test.json` | `crosscheck_map.py --report` (eval_map.py vs `YOLO.val()`, v3) |
+| `reports/training_curves.json` | validation mAP per epoch, copied out of the checkpoints by `extract_curves.py` |
+| `figures/presets_*.png` (except `presets_example.png`), `figures/training_curves.png` | `plot_presets.py` |
 | `figures/presets_example.png` | `render_presets.py` |
-| `reports/loadtest/*.csv`, `*.html` | Locust |
+| `reports/loadtest/*.html`, `figures/loadtest.svg` | Locust (six runs, v3); `plot_loadtest.py` draws the chart from them |
 
 ## Limitations
 
-- **Short training runs.** `configs/train.yaml` targets 100 epochs; v1/v2 are 10-epoch, v3 and v7
+- **Short training runs.** v1/v2 are 10-epoch, v3 and v7
   are 20-epoch, v6 stopped at 25 of 30, v8 at 10 of 16. v10 to v13 were capped by time (ultralytics' `time=`
   overrides `epochs`), so they ran 12 to 42 epochs. In the runs that went far enough, validation
   accuracy stopped improving after about 15 epochs (v10 and v11 peaked at epoch 15, v12 at 12, v13 at 7; see
@@ -545,12 +599,12 @@ comparison; the Space is for checking correctness and accuracy, not speed.
   3 matches; `val` is carved from it by holding out every 5th sequence, so held-out clips
   share a stadium/kit/camera with training clips from the same game. The `test` split
   (3 entirely separate matches) doesn't have this problem — it's the number to trust, and
-  the [Accuracy](#accuracy) section reports both so the ~11-14% gap is visible rather than
+  the [Accuracy](#accuracy) section reports both so the ~11-15% gap is visible rather than
   hidden. A cleaner fix (hold out a whole match for val) isn't really available with only
   3 training matches — this is a dataset-size constraint, not just a split bug.
 - **The `other` class is thinly validated.** It has 0 instances in `val` (AP undefined
-  there) and only 1,313 in `test` — where it scores ~0.23-0.25 and both models
-  over-predict it. Kept in the model and reported for completeness, but excluded from
+  there) and only 1,313 in `test` — where it scores 0.23-0.25 for v1/v2/v3 and 0.26-0.42 for
+  later runs, and every model over-predicts it. Kept in the model and reported for completeness, but excluded from
   the headline `all` mean (see [Accuracy](#accuracy)) rather than treated as a class
   worth optimizing for yet — folding it into `player` is a possible later simplification.
 - **One degenerate box in the raw source labels**, not introduced by conversion: one
@@ -561,9 +615,10 @@ comparison; the Space is for checking correctness and accuracy, not speed.
   (see [Latency](#latency-single-request-cpu-x86_64-2-physical-cores-batch1-v3-nano)) —
   but that runner is shared, variable-load infra, not the Docker image's actual deploy
   target, so absolute x86 numbers should be read as a sanity check, not a latency SLA.
-- **The ball is still the weak class at every size** (test AP 0.11 at 640, 0.14 at 960, 0.18 at 1280)
+- **The ball is still the weak class at every size** (test AP 0.11 at 640, 0.14 at 960, 0.18 at 1280, 0.20 for the small model at 1280)
   and is heavily over-predicted. Input size is now a choice you make with the presets, not a fixed
-  setting. Tiled high-resolution inference or ball-specific training are the untried next steps.
+  setting. Tiled inference was tried and did not help enough (see the v9 to v13 notes above); ball-specific training beyond a 2x
+  loss weight (v9) is untried.
 - **Out of scope for this phase:** tracking, video input, team assignment, TensorRT, a
   fancier frontend than the Gradio demo.
 

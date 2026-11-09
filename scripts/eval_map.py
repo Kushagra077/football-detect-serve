@@ -2,9 +2,9 @@
 """Per-class mAP for ANY backend through ONE code path.
 
 The metric is computed here (COCO-style 101-point AP over IoU 0.50:0.95) rather
-than delegated to ultralytics' validator, because the validator only accepts
-torch models. Running torch / onnx-fp32 / onnx-int8 through the same evaluator is
-the only way the numbers are comparable.
+than delegated to ultralytics' validator, so that torch / onnx-fp32 / onnx-int8 all go through the same
+DetectorBackend.predict() and the same AP code, which is what makes their numbers comparable. (It is
+cross-checked against YOLO.val(), see scripts/crosscheck_map.py.)
 
 Usage:
     python scripts/eval_map.py --backend torch --weights models/football_detection_v3.pt
@@ -262,7 +262,7 @@ def main() -> int:
         imgsz=imgsz,
         conf=args.conf,
         iou=args.iou,
-        max_det=cfg.get("serve", {}).get("max_det", 300),
+        max_det=300,
         device=args.device,
     )
     names = backend.class_names or {

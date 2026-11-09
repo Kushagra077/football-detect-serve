@@ -6,8 +6,8 @@
 # is kept only so the local container matches what the Space would have looked like.
 #
 # Both backends decode through ultralytics (YOLO(...).predict()), so torch IS
-# required now -- the old "ONNX graph only, no torch" premise is dead (see
-# PROGRESS.md, Step 7). CPU-only torch wheel keeps it to ~1 GB.
+# required now -- the old "ONNX graph only, no torch" premise is dead. The CPU-only
+# torch wheel keeps the image to about 2.8 GB with the four presets baked in (README, Docker).
 #
 # 3.11 here is unrelated to pyproject.toml's ">=3.13" (that's the local dev venv
 # pin) and to the HF Space's 3.12 (its own default) - three separate runtimes,
@@ -65,7 +65,7 @@ COPY models/football_detection_v3_int8.onnx models/football_detection_v3_int8.me
 RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /app
 USER appuser
 
-# HF Spaces gives the container a writable home; point ultralytics/matplotlib there.
+# The non-root user needs a writable home; point ultralytics/matplotlib config there.
 ENV HOME=/home/appuser \
     YOLO_CONFIG_DIR=/home/appuser/.config/Ultralytics \
     MPLCONFIGDIR=/home/appuser/.config/matplotlib

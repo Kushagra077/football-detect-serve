@@ -3,7 +3,7 @@
 Inference goes through ultralytics' own high-level YOLO.predict(), which decodes
 whatever head format the loaded model uses (classic anchor grid + NMS, or YOLO26's
 end2end top-k output) correctly. The old raw-tensor infer() has been removed - it
-assumed the classic anchor-grid layout that YOLO26 does not use. See PROGRESS.md.
+assumed the classic anchor-grid layout that YOLO26 does not use (it produced garbage boxes).
 """
 from __future__ import annotations
 

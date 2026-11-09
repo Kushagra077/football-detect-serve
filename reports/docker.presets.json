@@ -1,0 +1,117 @@
+{
+  "image": "football-detect-serve:local",
+  "image_size_gb": 2.79,
+  "container_memory_after_all_requests": "1.797GiB / 3.825GiB",
+  "requests_sent_before_memory_reading": 184,
+  "docker_vm": {
+    "cpus": 8,
+    "memory_gib": 3.82
+  },
+  "host": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "frame": {
+    "file": "dataset/images/test/SNMOT-116_000001.jpg",
+    "source": "dataset test split, 1920x1080 JPEG"
+  },
+  "method": "curl multipart upload, 3 untimed warm-ups then 20 timed sequential requests per preset and batching mode; whole request incl. upload and decode",
+  "healthz": {
+    "status": "ok",
+    "backend": "balanced",
+    "backends": {
+      "fast": "models/football_detection_v3.onnx",
+      "balanced": "models/football_detection_v7.onnx",
+      "accurate": "models/football_detection_v6.onnx",
+      "max": "models/football_detection_v13.onnx"
+    },
+    "model": "models/football_detection_v7.onnx",
+    "imgsz": 960,
+    "imgsz_by_backend": {
+      "fast": 640,
+      "balanced": 960,
+      "accurate": 1280,
+      "max": 1280
+    },
+    "classes": {
+      "0": "ball",
+      "1": "goalkeeper",
+      "2": "player",
+      "3": "referee",
+      "4": "other"
+    },
+    "warm": true,
+    "uptime_s": 0.1
+  },
+  "results": {
+    "fast": {
+      "batching_on": {
+        "curl_ms_p50": 60.243,
+        "curl_ms_p95": 79.67200000000001,
+        "curl_ms_min": 53.03,
+        "server_inference_ms_p50": 32.837,
+        "server_total_ms_p50": 57.4905,
+        "detections_median": 16.0
+      },
+      "batching_off": {
+        "curl_ms_p50": 41.525,
+        "curl_ms_p95": 50.522999999999996,
+        "curl_ms_min": 32.987,
+        "server_inference_ms_p50": 32.3465,
+        "server_total_ms_p50": 38.5095,
+        "detections_median": 16.0
+      }
+    },
+    "balanced": {
+      "batching_on": {
+        "curl_ms_p50": 82.658,
+        "curl_ms_p95": 99.143,
+        "curl_ms_min": 71.725,
+        "server_inference_ms_p50": 54.9765,
+        "server_total_ms_p50": 80.0575,
+        "detections_median": 18.0
+      },
+      "batching_off": {
+        "curl_ms_p50": 61.1965,
+        "curl_ms_p95": 71.56700000000001,
+        "curl_ms_min": 56.554,
+        "server_inference_ms_p50": 52.070499999999996,
+        "server_total_ms_p50": 58.311,
+        "detections_median": 18.0
+      }
+    },
+    "accurate": {
+      "batching_on": {
+        "curl_ms_p50": 123.828,
+        "curl_ms_p95": 136.35,
+        "curl_ms_min": 116.98,
+        "server_inference_ms_p50": 95.1885,
+        "server_total_ms_p50": 120.757,
+        "detections_median": 18.0
+      },
+      "batching_off": {
+        "curl_ms_p50": 105.0915,
+        "curl_ms_p95": 114.253,
+        "curl_ms_min": 97.898,
+        "server_inference_ms_p50": 94.3535,
+        "server_total_ms_p50": 100.5375,
+        "detections_median": 18.0
+      }
+    },
+    "max": {
+      "batching_on": {
+        "curl_ms_p50": 303.37750000000005,
+        "curl_ms_p95": 340.012,
+        "curl_ms_min": 285.666,
+        "server_inference_ms_p50": 276.2415,
+        "server_total_ms_p50": 299.5955,
+        "detections_median": 20.0
+      },
+      "batching_off": {
+        "curl_ms_p50": 275.105,
+        "curl_ms_p95": 292.036,
+        "curl_ms_min": 251.40099999999998,
+        "server_inference_ms_p50": 266.368,
+        "server_total_ms_p50": 272.591,
+        "detections_median": 20.0
+      }
+    }
+  }
+}

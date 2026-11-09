@@ -1,15 +1,16 @@
 [project]
 name = "football-detect-serve"
-version = "0.1.0"
+version = "0.2.0"
 description = "Football object detection (YOLO26 -> ONNX -> INT8) served behind a batching FastAPI service"
 readme = "README.md"
 requires-python = ">=3.13"
-# Full local-dev environment (this file, via `uv sync`): training, data-fetch
-# tooling (kaggle/pytubefix/yt-dlp) and experiment tracking (wandb/weave) on
-# top of everything serving needs. requirements.txt is the separate, smaller,
-# deliberately-unpinned list that Docker/CI actually install from - it only
-# carries what app/ + scripts/ + tests/ import. The two are meant to differ;
-# see requirements.txt's own header comments for what's excluded and why.
+# Local-dev environment (this file, via `uv sync`): serving, training and load-test
+# dependencies plus data-fetch tooling (kaggle/pytubefix/yt-dlp) and experiment
+# tracking (wandb/weave). No script here imports those tools (only wandb appears,
+# in notebooks/model_train.ipynb). Packages that arrive transitively through
+# ultralytics (numpy, opencv, pyyaml, matplotlib, ...) are not listed. The separate,
+# deliberately-unpinned requirements.txt is what Docker/CI install from. The two are
+# meant to differ; see requirements.txt's own header comments.
 dependencies = [
     "fastapi>=0.141.1",
     "gradio>=6.26.0",

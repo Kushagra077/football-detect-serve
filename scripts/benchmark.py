@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Step 6 - model latency harness. Writes reports/latency.json (+ a figure).
+"""Model latency harness. Writes reports/latency.json (+ a figure).
 
 Measures each backend's end-to-end predict() latency on CPU across a batch-size
 sweep. Reports p50/p95/p99, throughput, and the preprocess/inference/postprocess
 split that ultralytics tracks internally (predictor.speed).
 
 Concurrency (1/4/16 simultaneous requests) is NOT measured here - that is the
-HTTP load test in Step 8. This script isolates "how fast is the model itself".
+HTTP load test (bench/locustfile.py). This script isolates "how fast is the model itself".
 
 Usage:
     python scripts/benchmark.py                          # every model in models/
@@ -213,7 +213,6 @@ def main() -> int:
         cfg = yaml.safe_load(fh)
 
     imgsz = cfg.get("train", {}).get("imgsz", 640)
-    scfg = cfg.get("serve", {})
     models = discover_models(args.models)
     if not models:
         print("[fail] no models found. Export first: python scripts/export_onnx.py --weights models/football_detection_v3.pt", file=sys.stderr)
@@ -233,9 +232,9 @@ def main() -> int:
             kind=kind,
             weights=str(path),
             imgsz=m_imgsz,
-            conf=scfg.get("conf", 0.25),
-            iou=scfg.get("iou", 0.45),
-            max_det=scfg.get("max_det", 300),
+            conf=0.25,
+            iou=0.45,
+            max_det=300,
             device=args.device,
         )
         for batch in args.batch_sizes:
@@ -261,7 +260,7 @@ def main() -> int:
         "settings": {"imgsz": imgsz, "runs": args.runs, "warmup": args.warmup, "batch_sizes": args.batch_sizes,
                      "frames": {"source": frame_source, "width": int(images[0].shape[1]),
                                 "height": int(images[0].shape[0])}},
-        "note": "single-request latency; concurrency 1/4/16 is measured by the Step 8 HTTP load test",
+        "note": "single-request latency; concurrency is measured by the HTTP load test (bench/locustfile.py). settings.imgsz is only the fallback size: each model runs at the size in its export sidecar, recorded in results[].imgsz where present",
         "results": results,
     }
     args.report.parent.mkdir(parents=True, exist_ok=True)

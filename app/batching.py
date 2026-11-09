@@ -70,8 +70,12 @@ class BatchedPredictor:
         max_batch_size: int = 8,
         max_wait_ms: float = 15.0,
         max_queue_size: int = 256,
+        label: Optional[str] = None,
     ) -> None:
         self.backend = backend
+        # Metric label. Default is the runtime name (onnx-fp32 ...), which is the SAME for every ONNX fp32 preset, so
+        # the server passes the registry name (fast / balanced / accurate / max) to keep their series apart.
+        self.label = label or backend.name
         self.max_batch_size = max(1, max_batch_size)
         self.max_wait_s = max(0.0, max_wait_ms / 1000.0)
         self.max_queue_size = max_queue_size
@@ -122,7 +126,7 @@ class BatchedPredictor:
         except asyncio.QueueFull as exc:
             raise QueueOverflow("inference queue is full") from exc
 
-        metrics.QUEUE_DEPTH.labels(backend=self.backend.name).set(self._queue.qsize())
+        metrics.QUEUE_DEPTH.labels(backend=self.label).set(self._queue.qsize())
         detections = await job.future
         return detections, job.batch_size, job.infer_ms
 
@@ -152,10 +156,10 @@ class BatchedPredictor:
                 self._drain_cancelled()
                 raise
 
-            metrics.QUEUE_DEPTH.labels(backend=self.backend.name).set(self._queue.qsize())
+            metrics.QUEUE_DEPTH.labels(backend=self.label).set(self._queue.qsize())
             now = time.perf_counter()
             for job in batch:
-                metrics.QUEUE_WAIT.labels(backend=self.backend.name).observe(now - job.enqueued_at)
+                metrics.QUEUE_WAIT.labels(backend=self.label).observe(now - job.enqueued_at)
 
             try:
                 # Same threshold -> one forward pass, same as before. Different
@@ -163,7 +167,7 @@ class BatchedPredictor:
                 # max_det); see _group_by_options. Either way, every job gets
                 # inferred with exactly the threshold it asked for.
                 for group in _group_by_options(batch):
-                    metrics.BATCH_SIZE.labels(backend=self.backend.name).observe(len(group))
+                    metrics.BATCH_SIZE.labels(backend=self.label).observe(len(group))
                     results, infer_ms = await loop.run_in_executor(None, self._infer_batch, group)
                     for job, dets in zip(group, results):
                         job.batch_size = len(group)
@@ -197,7 +201,7 @@ class BatchedPredictor:
             results = self.backend.predict(images, conf=conf, iou=iou, max_det=max_det)
         infer_s = time.perf_counter() - t0
 
-        metrics.INFERENCE_LATENCY.labels(backend=self.backend.name).observe(infer_s)
+        metrics.INFERENCE_LATENCY.labels(backend=self.label).observe(infer_s)
         for dets in results:
             for det in dets:
                 metrics.DETECTIONS.labels(class_name=det.class_name).inc()

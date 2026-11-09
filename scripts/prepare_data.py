@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Download the dataset, verify its class map, and count instances per class.
+"""Verify the dataset's class map and count instances per class (optionally downloading a zip first).
 
-Fails loudly on the things that silently ruin a detection run:
-  * class map that disagrees with configs/train.yaml (wrong ids => garbage mAP)
+Checks the things that silently ruin a detection run. A class map that disagrees with configs/train.yaml (wrong
+ids => garbage mAP) fails the run (exit 2); the others are collected, printed and written to reports/dataset.json,
+and fail the run only with --strict:
   * labels referencing class ids outside the map
   * missing image/label pairs
   * out-of-range or degenerate boxes

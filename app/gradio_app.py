@@ -2,7 +2,7 @@
 
 This is the public HF Space deliverable, separate from the FastAPI service in
 app/main.py. No batching queue, no /metrics - it's a low-traffic demo, not the
-thing under load test. See PROGRESS.md's 2026-09-04 deploy-plan split.
+thing under load test. The Docker image is the load-tested deliverable; this app is the public demo.
 
 Run locally:
     python -m app.gradio_app
@@ -24,8 +24,8 @@ IMGSZ = int(os.getenv("IMGSZ", 640))
 CONF = float(os.getenv("CONF", 0.25))
 IOU = float(os.getenv("IOU", 0.45))
 
-# The three v3 backends the local Docker service also bakes in (PROGRESS.md Step 8), plus three
-# larger-input ONNX models from the speed/accuracy presets: slower, more accurate (README "Model presets").
+# The three v3 backends (torch / onnx-fp32 / onnx-int8) that the local Docker service can also serve, plus the
+# three higher-accuracy ONNX presets (balanced v7, accurate v6, max v13): slower, more accurate (README "Model presets").
 _MODELS: Dict[str, str] = {
     "fast (v3, 640px) - onnx-fp32": "models/football_detection_v3.onnx",
     "balanced (v7, 960px)": "models/football_detection_v7.onnx",
@@ -39,8 +39,8 @@ _MODELS: Dict[str, str] = {
 _IMGSZ: Dict[str, int] = {"balanced (v7, 960px)": 960, "accurate (v6, 1280px)": 1280, "max (v13 small, 1280px)": 1280}
 _DEFAULT_MODEL = "fast (v3, 640px) - onnx-fp32"
 
-# Loaded lazily per backend name and cached - a Space with 16GB RAM (free CPU
-# Basic) comfortably holds all three loaded at once.
+# Loaded lazily per backend name and cached; a Space host's RAM comfortably holds
+# all six entries loaded at once (the four ONNX presets alone took 1.80 GiB in the Docker image).
 _CACHE: Dict[str, DetectorBackend] = {}
 
 _COLORS = {
@@ -128,7 +128,7 @@ with gr.Blocks(title="football-detect-serve") as demo:
         "Detects **ball / goalkeeper / player / referee**. Pick a model to compare "
         "accuracy — full mAP and latency tables (measured on CPU) are in the repo README. "
         "The four options trade speed for accuracy (the torch and onnx-int8 rows are v3 again, only to compare runtimes):\n\n"
-        "| option | model | input | test mAP50-95 | latency, CPU (Apple M2) |\n"
+        "| option | model | input | test mAP50-95 (4-class mean) | latency, CPU (Apple M2) |\n"
         "|---|---|---|---|---|\n"
         "| fast | v3 nano | 640 px | 0.400 | 16 ms |\n"
         "| balanced | v7 nano | 960 px | 0.430 | 33 ms |\n"

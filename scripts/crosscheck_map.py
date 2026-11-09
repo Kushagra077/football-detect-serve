@@ -7,7 +7,7 @@ through one code path. This script runs the reference implementation
 and prints a side-by-side diff, giving the custom evaluator an external witness.
 
 It's a check, not a gate: it always exits 0. Small gaps are expected - NMS
-tie-breaking, image- vs instance-level averaging, the empty `other` class. A
+tie-breaking, image- vs instance-level averaging, the `other` class (no instances on val). A
 gap above --tol on a populated class is what's worth a look.
 
 Usage:
@@ -74,6 +74,9 @@ def main() -> int:
         "(default: reports/accuracy.torch.<stem>[.test].json if present)",
     )
     ap.add_argument("--tol", type=float, default=0.03, help="per-class gap to flag (default 0.03)")
+    ap.add_argument("--rect", choices=["true", "false"], default=None,
+                    help="pass rect= to YOLO.val() (default: ultralytics' own default for val, which is true)")
+    ap.add_argument("--report", type=Path, default=None, help="also write the side-by-side numbers as JSON")
     args = ap.parse_args()
 
     weights = resolve(Path(args.weights))
@@ -104,6 +107,7 @@ def main() -> int:
         f"conf={args.conf} iou={args.iou} max_det={args.max_det} device={args.device}"
     )
     model = YOLO(str(weights))
+    extra = {} if args.rect is None else {"rect": args.rect == "true"}
     r = model.val(
         data=str(data_yaml),
         split=args.split,
@@ -113,6 +117,7 @@ def main() -> int:
         device=args.device,
         verbose=False,
         plots=False,
+        **extra,
     )
 
     # per-class AP50-95 for the classes ultralytics actually scored (skips 0-instance)
@@ -135,6 +140,7 @@ def main() -> int:
         f"mAP50-95={base['overall']['map50_95']:.4f}  mAP50={base['overall']['map50']:.4f}"
     )
 
+    rows = {}
     row = f"\n{'class':<12}{'eval_map':>10}{'YOLO.val':>10}{'gap':>9}"
     print(row)
     print("-" * (len(row) - 1))
@@ -149,10 +155,24 @@ def main() -> int:
             print(f"{cname:<12}{custom:>10.4f}{'n/a':>10}{'-':>9}   (not scored by YOLO.val)")
             continue
         gap = abs(custom - ref)
+        rows[cname] = {"eval_map": custom, "yolo_val": ref, "eval_map_minus_yolo_val": custom - ref}
         worst = max(worst, gap)
         print(f"{cname:<12}{custom:>10.4f}{ref:>10.4f}{gap:>9.4f}{'   <-- > tol' if gap > args.tol else ''}")
     print("-" * (len(row) - 1))
     mean_gap = abs(base["overall"]["map50_95"] - ref_map)
+    if args.report:
+        args.report.parent.mkdir(parents=True, exist_ok=True)
+        args.report.write_text(json.dumps({
+            "weights": weights.name, "split": args.split, "device": args.device,
+            "conf": args.conf, "nms_iou": args.iou, "max_det": args.max_det,
+            "yolo_val_rect": "default (true)" if args.rect is None else args.rect,
+            "eval_map_report": _display_path(baseline_path),
+            "per_class": rows,
+            "mean_eval_map_5class": base["overall"]["map50_95"], "mean_yolo_val": ref_map,
+            "mean_eval_map_minus_yolo_val": base["overall"]["map50_95"] - ref_map,
+            "note": "eval_map's overall mean is over the classes it scored; YOLO.val's is over the populated classes",
+        }, indent=2))
+        print(f"[ok  ] wrote {_display_path(args.report)}")
     print(f"{'MEAN':<12}{base['overall']['map50_95']:>10.4f}{ref_map:>10.4f}{mean_gap:>9.4f}")
 
     biggest = max(worst, mean_gap)
@@ -161,7 +181,7 @@ def main() -> int:
         print(
             f"[warn] largest gap {biggest:.4f} exceeds tol {args.tol} - worth a look. "
             f"Expected causes: NMS tie-breaking, image- vs instance-level averaging, "
-            f"the empty `other` class."
+            f"the `other` class (no instances on val)."
         )
     else:
         print(

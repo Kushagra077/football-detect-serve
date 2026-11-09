@@ -4,7 +4,7 @@ Inference goes through ultralytics' own YOLO("model.onnx").predict(), which load
 graph into onnxruntime, decodes whatever head format it carries (classic anchor grid
 + NMS, or YOLO26's end2end top-k output), and matches the torch backend exactly. The
 old raw-tensor path (infer()/base.postprocess()) has been removed - it assumed the
-classic anchor-grid layout, which YOLO26 does not use. See PROGRESS.md.
+classic anchor-grid layout, which YOLO26 does not use (it produced garbage boxes).
 """
 from __future__ import annotations
 
