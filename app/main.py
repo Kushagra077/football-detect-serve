@@ -52,12 +52,15 @@ MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", 10 * 1024 * 1024))
 # surrounding JSON syntax and the "options"/"image_url" keys.
 MAX_B64_CHARS = MAX_UPLOAD_BYTES * 4 // 3 + 1024
 
-# Three speed/accuracy presets, all ONNX fp32 (see README "Model presets"). Each model
+# Four speed/accuracy presets, all ONNX fp32 (see README "Model presets"). Each model
 # runs at its own input size (read from its export sidecar), so they can share a process.
+# "max" is the small model (yolo26s) at 1280 px: the most accurate, about 3x the cost of
+# "accurate" on a CPU, so it is meant for a server or a GPU, not a laptop.
 _DEFAULT_MODELS = (
     "fast=models/football_detection_v3.onnx,"
     "balanced=models/football_detection_v7.onnx,"
-    "accurate=models/football_detection_v6.onnx"
+    "accurate=models/football_detection_v6.onnx,"
+    "max=models/football_detection_v13.onnx"
 )
 
 

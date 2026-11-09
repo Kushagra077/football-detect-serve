@@ -29,31 +29,41 @@ running that code, not from a spec sheet.
 
 ### Model presets: speed vs accuracy
 
-One service, three trade-off points. A faster model costs accuracy; a more accurate one costs
-time. The server loads all three, and `?backend=fast|balanced|accurate` picks one per request.
+One service, four trade-off points. A faster model costs accuracy; a more accurate one costs
+time. The server loads all four, and `?backend=fast|balanced|accurate|max` picks one per request.
 
 ![speed vs accuracy](reports/figures/presets_tradeoff.png)
 
 | preset | model | input size | test mAP50-95 | val mAP50-95 | ball AP (test) | latency, batch 1 (p50 / p95) | throughput, batch 8 |
 |---|---|---|---|---|---|---|---|
 | **fast** | v3 | 640 | 0.400 | 0.470 | 0.111 | 16.2 / 17.1 ms | 66 img/s |
-| **balanced** | v7 | 960 | 0.430 | 0.497 | 0.140 | 32.4 / 35.2 ms | 31 img/s |
-| **accurate** | v6 | 1280 | 0.459 | 0.529 | 0.178 | 60.9 / 62.6 ms | 17 img/s |
+| **balanced** | v7 | 960 | 0.430 | 0.497 | 0.140 | 32.7 / 36.7 ms | 31 img/s |
+| **accurate** | v6 | 1280 | 0.459 | 0.529 | 0.178 | 60.1 / 66.4 ms | 16 img/s |
+| **max** | v13 (small) | 1280 | 0.477 | 0.550 | 0.199 | 177.1 / 207.3 ms | 5 img/s |
 
 mAP is the 4-class mean (ball / goalkeeper / player / referee) from `scripts/eval_map.py`, the same
-evaluator for every model. Latency is ONNX fp32 on CPU (Apple M2, 4 threads, 100 runs after 20 warm-up),
-measured by `scripts/benchmark.py` with each model at its own input size (`reports/latency.presets.json`).
+evaluator for every model. Latency is ONNX fp32 on CPU (Apple M2, 4 threads, 100 runs after 20 warm-up, real
+1080p dataset frames), measured by `scripts/benchmark.py` with each model at its own input size, all four in one
+session (`reports/latency.presets.json`). `max` is the val-selected v13 checkpoint; its ONNX file matches torch
+exactly on the full val split (`reports/accuracy.onnx.v13.fp32.json`).
 
-- **Each step up costs about twice the time and buys about +0.03 test mAP.** The ball gains the most
-  (0.111 to 0.178, +60%) but stays the weakest class at every size.
-- **Same network, different input size.** All three are YOLO26 nano (a 10 MB ONNX file each). v6 and v7 were
-  trained at 1280 and 960; v3 at 640.
+- **The first three steps each cost about twice the time and buy about +0.03 test mAP; the fourth costs about
+  three times as much for less.** The ball gains the most (0.111 to 0.178 across the first three, +60%) but stays
+  the weakest class at every size. *max* adds +0.018 test mAP over *accurate* (0.459 to 0.477) and lifts the ball
+  from 0.178 to 0.199. Its last checkpoint scores 0.490 on test with the same val score, so the gain over
+  *accurate* is +0.018 to +0.031, not one exact number.
+- **Same network, different input size, except `max`.** fast, balanced and accurate are YOLO26 nano (a 10 MB ONNX
+  file each): v6 and v7 were trained at 1280 and 960, v3 at 640. *max* is YOLO26 small (v13, 9.9M parameters,
+  a 38 MB ONNX file) at 1280.
 - **Which to use.** *fast* for real-time video on a CPU (25 fps needs about 25 img/s per stream: fast and
   balanced clear it on this machine, accurate does not). *accurate* for offline analysis, such as reviewing a
-  match after it has been played. *balanced* is the default.
-- **In Docker** (a Linux VM on the same M2; the whole request, including decoding a 1080p JPEG), the median
-  request takes 42 / 60 / 103 ms for fast / balanced / accurate, and the container holds all three models in
-  about 1 GiB of RAM.
+  match after it has been played. *max* for a server or a GPU, where the extra cost matters less: on a laptop CPU
+  it runs at about 6 images per second. *balanced* is the default.
+- **In Docker** (a Linux VM on the same M2, 8 CPUs; the whole request, including a 1080p JPEG upload and decode,
+  timed with `curl`, median of 20 after 3 warm-ups) the median request takes 59 / 80 / 123 / 291 ms for fast /
+  balanced / accurate / max, and the container held all four models in 1.76 GiB of RAM. An earlier test of the first
+  three with a different harness gave 42 / 60 / 103 ms and about 1 GiB; the two harnesses differ, so do not compare
+  numbers across them. In a bare process on the same machine one server with all four presets loaded held 1.6 GB.
 - **Batch size 2 is slower per image than batch 1 or 4** for all three models (cause not investigated); read
   throughput from batch 4 or 8.
 - **v8** repeated v7 with settings from a short hyperparameter search. It was cancelled by a 12-hour session
@@ -344,7 +354,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-The weights the three serving presets load (`models/football_detection_v3.onnx`, `_v7.onnx`, `_v6.onnx`, with a `.meta.json` beside each that records its input size) are included, so `docker build` and CI work from a clean clone. They are for non-commercial research use only (see [License](#license)). To reproduce them, run [Pipeline](#pipeline) below on your own [SoccerNet](https://www.soccer-net.org/data) access: the data, frames and labels are not distributed here, and `models/download_weights.py` has no default source to fetch from. The [Live demo](#live-demo) has the models loaded if you only want to see it work.
+The weights the four serving presets load (`models/football_detection_v3.onnx`, `_v7.onnx`, `_v6.onnx`, `_v13.onnx`, with a `.meta.json` beside each that records its input size) are included, so `docker build` and CI work from a clean clone. They are for non-commercial research use only (see [License](#license)). To reproduce them, run [Pipeline](#pipeline) below on your own [SoccerNet](https://www.soccer-net.org/data) access: the data, frames and labels are not distributed here, and `models/download_weights.py` has no default source to fetch from. The [Live demo](#live-demo) has the models loaded if you only want to see it work.
 
 **Dataset license.** SoccerNet's annotations are released under **CC BY-NC 4.0**
 (non-commercial). The broadcast videos themselves are separately gated behind an NDA —
@@ -410,7 +420,7 @@ python scripts/benchmark.py
 ## Serving
 
 ```bash
-MODELS="fast=models/football_detection_v3.onnx,balanced=models/football_detection_v7.onnx,accurate=models/football_detection_v6.onnx" \
+MODELS="fast=models/football_detection_v3.onnx,balanced=models/football_detection_v7.onnx,accurate=models/football_detection_v6.onnx,max=models/football_detection_v13.onnx" \
 DEFAULT_BACKEND=balanced uvicorn app.main:app --host 0.0.0.0 --port 7860
 ```
 
@@ -422,7 +432,7 @@ the model, or set with a suffix (`MODELS="x=models/m.onnx@960"`). The backend ty
 
 | Env var | Default | Notes |
 | --- | --- | --- |
-| `MODELS` | `fast` (v3) + `balanced` (v7) + `accurate` (v6), ONNX fp32 | `name=path[@imgsz],name=path,...` |
+| `MODELS` | `fast` (v3) + `balanced` (v7) + `accurate` (v6) + `max` (v13), ONNX fp32 | `name=path[@imgsz],name=path,...` |
 | `DEFAULT_BACKEND` | first entry in `MODELS` (the Docker image sets `balanced`) | used when `?backend=` is omitted |
 | `DEVICE` | `cpu` | |
 | `IMGSZ` | `640` | fallback only, for a model with neither a sidecar nor an `@size` |
@@ -468,10 +478,11 @@ docker build -t football-detect-serve:local .
 docker run --rm -p 7860:7860 football-detect-serve:local
 ```
 
-The image serves the three presets (fast / balanced / accurate) by default. Both backends
+The image serves the four presets (fast / balanced / accurate / max) by default. Both backends
 decode through ultralytics (see Design rules), so it includes torch + ultralytics, not just
-onnxruntime: about 2.6 GB on disk. With all three presets loaded it used about 1 GiB of RAM
-in testing, well inside a 3-4 GB container budget.
+onnxruntime: 2.79 GB on disk with `max` (about 2.6 GB before). With all four presets loaded the container used
+1.76 GiB of RAM after 80 requests (about 1 GiB with the first three, in an earlier test), inside a 3-4 GB
+container budget.
 
 ## Load test
 
@@ -510,7 +521,7 @@ comparison; the Space is for checking correctness and accuracy, not speed.
 | `reports/accuracy.<backend>.<model>.json` | `eval_map.py` |
 | `reports/latency.json`, `figures/latency.png` | `benchmark.py` (local, Apple M2) |
 | `reports/latency.x86.json`, `figures/latency.x86.png` | `benchmark.py` (`benchmark.yml` CI run, x86) |
-| `reports/latency.presets.json` | `benchmark.py` on the v3 / v7 / v6 ONNX presets (Apple M2) |
+| `reports/latency.presets.json` | `benchmark.py` on the v3 / v7 / v6 / v13 ONNX presets (Apple M2) |
 | `reports/latency.x86.presets.json`, `figures/latency.x86.presets.png` | `benchmark.py` on the same presets (`benchmark.yml` CI run, x86) |
 | `reports/training_curves.json` | validation mAP per epoch, copied out of the checkpoints |
 | `figures/presets_*.png`, `figures/training_curves.png` | `plot_presets.py` |

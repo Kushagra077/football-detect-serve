@@ -34,8 +34,11 @@ models/*.pt
 models/*.part
 models/*.prep.onnx
 models/*.engine
-models/football_detection_v1*.onnx
-models/football_detection_v2*.onnx
+# v1 and v2 only: "v1*" would also match v10..v19 (v13 is a served preset), so name the suffixes
+models/football_detection_v1.onnx
+models/football_detection_v1_*.onnx
+models/football_detection_v2.onnx
+models/football_detection_v2_*.onnx
 models/*_fp16.onnx
 !models/.gitkeep
 

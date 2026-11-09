@@ -31,6 +31,7 @@ PRESETS = {
     "v3": ("fast", 640, "#6b7a8f"),
     "v7": ("balanced", 960, "#1f9d8b"),
     "v6": ("accurate", 1280, "#e07b39"),
+    "v13": ("max", 1280, "#c0392b"),  # small model (yolo26s), val-selected checkpoint; the others are nano
 }
 V8_COLOR = "#8a5cc2"
 TEXT = "#2b2b2b"
@@ -80,7 +81,7 @@ def tradeoff() -> None:
             continue
         pts.append((ms, mean4(ap)))
         ax.scatter(ms, mean4(ap), s=150, color=color, zorder=3)
-        offset = (12, 8) if v == "v3" else (10, -26)  # keep v3's label clear of the axis
+        offset = {"v3": (12, 8), "v13": (-62, -40)}.get(v, (10, -26))  # keep v3's label off the axis, v13's off the edge
         ax.annotate(f"{name}\n{v} @ {size}px", (ms, mean4(ap)), textcoords="offset points",
                     xytext=offset, fontsize=10, color=TEXT)
     if len(pts) > 1:
@@ -96,7 +97,7 @@ def tradeoff() -> None:
     ax.set_xlim(left=5)
     ax.set_xlabel("latency per image, ms (ONNX fp32, CPU, batch 1, Apple M2) — lower is faster", color=TEXT)
     ax.set_ylabel("test mAP50-95, mean of 4 classes — higher is better", color=TEXT)
-    ax.set_title("Speed vs accuracy: three presets", loc="left", fontsize=13, color=TEXT)
+    ax.set_title("Speed vs accuracy: four presets", loc="left", fontsize=13, color=TEXT)
     style(ax)
     fig.tight_layout()
     FIG.mkdir(parents=True, exist_ok=True)

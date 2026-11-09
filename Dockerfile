@@ -51,13 +51,14 @@ RUN pip install --no-cache-dir \
 COPY app ./app
 COPY configs ./configs
 
-# Bake in the files the default registry (main.py _DEFAULT_MODELS) loads: three ONNX fp32
-# presets (fast v3 / balanced v7 / accurate v6). The .meta.json sidecars carry each model's
-# input size, so every preset runs at the size it was trained at. The v3 torch and int8
+# Bake in the files the default registry (main.py _DEFAULT_MODELS) loads: four ONNX fp32
+# presets (fast v3 / balanced v7 / accurate v6 / max v13). The .meta.json sidecars carry each
+# model's input size, so every preset runs at the size it was trained at. The v3 torch and int8
 # files stay available for MODELS=... overrides. Mount over /app/models to swap.
 COPY models/football_detection_v3.onnx models/football_detection_v3.meta.json ./models/
 COPY models/football_detection_v7.onnx models/football_detection_v7.meta.json ./models/
 COPY models/football_detection_v6.onnx models/football_detection_v6.meta.json ./models/
+COPY models/football_detection_v13.onnx models/football_detection_v13.meta.json ./models/
 COPY models/football_detection_v3.pt ./models/
 COPY models/football_detection_v3_int8.onnx models/football_detection_v3_int8.meta.json ./models/
 
