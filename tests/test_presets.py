@@ -84,3 +84,10 @@ def test_dockerignore_still_drops_the_retired_models():
     for retired in ("models/football_detection_v1.onnx", "models/football_detection_v1_int8.onnx",
                     "models/football_detection_v2.onnx", "models/football_detection_v2_fp16.onnx"):
         assert _dockerignored(retired), retired
+
+
+@pytest.mark.parametrize("name", list(EXPECTED))
+def test_ci_benchmark_times_each_preset(name):
+    """benchmark.yml lists its models explicitly, so a new preset is silently missing from the x86 table otherwise."""
+    path, _ = EXPECTED[name]
+    assert path in (ROOT / ".github/workflows/benchmark.yml").read_text()
