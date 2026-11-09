@@ -1,10 +1,9 @@
-# This is the install source for Docker/CI/HF - what app/, scripts/ and tests/
-# need (plus pillow/onnxslim/locust used by ultralytics export and bench/),
-# deliberately unpinned. pyproject.toml (uv) carries a
-# larger set on top of this for local dev: data-fetch tooling (kaggle,
-# pytubefix, yt-dlp) and experiment tracking (wandb, weave) used by
-# notebooks/, none of which serving/training-via-script needs. The two are
-# meant to differ - don't "reconcile" them into one list.
+# The plain-pip install list (README Setup, and the benchmark workflow): what app/, scripts/,
+# bench/ and tests/ need (plus pillow/onnxslim for ultralytics export), deliberately unpinned.
+# The Dockerfile and tests.yml carry their own, smaller explicit pip lists. pyproject.toml (uv)
+# is the local-dev list: it adds data-fetch tooling (kaggle, pytubefix, yt-dlp) and experiment
+# tracking (wandb, weave) that no script here imports. The lists are meant to differ - don't
+# "reconcile" them into one.
 
 # --- training / export ---
 ultralytics

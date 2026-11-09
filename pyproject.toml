@@ -9,8 +9,8 @@ requires-python = ">=3.13"
 # tracking (wandb/weave). No script here imports those tools (only wandb appears,
 # in notebooks/model_train.ipynb). Packages that arrive transitively through
 # ultralytics (numpy, opencv, pyyaml, matplotlib, ...) are not listed. The separate,
-# deliberately-unpinned requirements.txt is what Docker/CI install from. The two are
-# meant to differ; see requirements.txt's own header comments.
+# deliberately-unpinned requirements.txt is the plain-pip list (benchmark workflow, README
+# Setup); the Dockerfile and tests.yml have their own explicit lists. They are meant to differ.
 dependencies = [
     "fastapi>=0.141.1",
     "gradio>=6.26.0",

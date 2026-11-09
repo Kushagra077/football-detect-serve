@@ -351,7 +351,7 @@ def main() -> int:
 
     payload = {
         "backend": backend.name,
-        "weights": str(weights),
+        "weights": _display_path(weights),  # repo-relative so the report does not embed the home directory
         "split": args.split,
         "num_images": len(records),
         "conf": args.conf,

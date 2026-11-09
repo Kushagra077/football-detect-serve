@@ -1,6 +1,6 @@
 {
   "backend": "torch",
-  "weights": "/Users/kushagrapandya/Desktop/football-detect-serve/models/football_detection_v3.pt",
+  "weights": "models/football_detection_v3.pt",
   "split": "test",
   "num_images": 36750,
   "conf": 0.001,

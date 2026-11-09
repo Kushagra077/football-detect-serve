@@ -2,8 +2,9 @@
 """Export a .pt checkpoint to ONNX (fp32 / fp16 / int8), simplified graph.
 
 Decode is handled by ultralytics on load (YOLO("model.onnx")), so `nms=False` here
-just means "don't add a second NMS op" — YOLO26's end2end head already emits final
-boxes. Parity with torch is checked via scripts/eval_map.py (onnx-fp32 mAP == torch).
+just means "don't add a second NMS op". The exports differ: v3's carries YOLO26's end2end head
+(output [batch, 300, 6], already final boxes) while v7, v6 and v13 came out as a dense [batch, 9, anchors]
+output that ultralytics decodes and runs NMS on at predict time (see each .meta.json output_shape). Parity with torch is checked via scripts/eval_map.py (onnx-fp32 mAP == torch).
 
 Usage:
     python scripts/export_onnx.py --weights models/football_detection_v3.pt
@@ -139,8 +140,8 @@ def main() -> int:
 
     names = {int(k): str(v) for k, v in dict(getattr(model, "names", {}) or {}).items()}
     meta = {
-        "weights": str(weights),
-        "onnx": str(out_path),
+        "weights": rel(weights),  # repo-relative: absolute paths would leak the exporter's home directory
+        "onnx": rel(out_path),
         "imgsz": imgsz,
         "opset": opset,
         "dynamic_batch": dynamic,

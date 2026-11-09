@@ -219,7 +219,7 @@ def main() -> int:
         return 2
 
     images, frame_source = sample_images(cfg, max(args.batch_sizes))
-    print(f"[info] device={args.device} imgsz={imgsz} omp_threads={args.omp_threads} "
+    print(f"[info] device={args.device} fallback imgsz={imgsz} (each model uses its own, below) omp_threads={args.omp_threads} "
           f"runs={args.runs} warmup={args.warmup}  models={len(models)}  "
           f"frames={frame_source} {images[0].shape[1]}x{images[0].shape[0]}")
 

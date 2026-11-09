@@ -29,8 +29,8 @@
       "eval_map_minus_yolo_val": 0.02313126540573851
     }
   },
-  "mean_eval_map_5class": 0.46946936417079116,
+  "mean_eval_map": 0.46946936417079116,
   "mean_yolo_val": 0.4509195381739305,
   "mean_eval_map_minus_yolo_val": 0.01854982599686067,
-  "note": "eval_map's overall mean is over the classes it scored; YOLO.val's is over the populated classes"
+  "note": "means are over the classes that have instances in the split: 4 on val (no `other`), 5 on test"
 }

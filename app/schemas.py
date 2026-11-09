@@ -39,7 +39,10 @@ class PredictResponse(BaseModel):
     num_detections: int
     image_width: int
     image_height: int
-    backend: str
+    backend: str = Field(
+        description="Runtime of the loaded model (torch, onnx-fp32, onnx-int8), NOT the preset name: every ONNX fp32 "
+        "preset reports onnx-fp32. The preset is the ?backend= you sent; `model` is its file."
+    )
     model: str
     inference_ms: float = Field(description="Model forward pass only.")
     total_ms: float = Field(description="Decode + preprocess + infer + postprocess.")

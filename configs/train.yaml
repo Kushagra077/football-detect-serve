@@ -19,7 +19,8 @@ model:
 
 train:
   # The values below are the v3 recipe (fast preset: nano, 640, 20 epochs, mixup on), taken from the training
-  # arguments stored inside models/football_detection_v3.pt (device was 0,1 there; project/name differ). They stay
+  # arguments stored inside models/football_detection_v3.pt (there: device 0,1, project football_detection, name
+  # football_detection_v3, exist_ok False, copy_paste 0.3 as a no-op, see below). They stay
   # at 640 on purpose: train.imgsz is also the fallback input size for export_onnx.py, eval_map.py and benchmark.py,
   # so raising it here would silently change those. Every run, v1 to v13, was launched as a raw model.train(...)
   # call in a Kaggle notebook (device=[0,1]), not through scripts/train.py, so editing this file alone does not
@@ -31,7 +32,7 @@ train:
   #   v3   yolo26n    640    20              16    0.7    0.1       10        auto              fast
   #   v7   yolo26n    960    20              16    0.5    0.0        5        MuSGD             balanced
   #   v6   yolo26n   1280    30, stopped 25  16    0.7    0.1       10        MuSGD             accurate (best = epoch 15)
-  #   v10  yolo26n   1280    25, time=9.5    16    0.7    0.1        7        MuSGD             (v6 recipe, finished; not served)
+  #   v10  yolo26n   1280    25, time=9.5    16    0.7    0.1        7        MuSGD             (v6 recipe, copy_paste 0 not 0.3; not served)
   #   v13  yolo26s   1280    12, time=4.5    12    0.7    0.1        3        AdamW, lr0 0.001111  max (best = epoch 7)
   #
   # v3 stored optimizer=auto, which ultralytics resolves when training starts; the later runs stored what it chose.
@@ -68,9 +69,9 @@ train:
   # avoid vertical flip (pitch footage is never upside down). mixup was turned
   # on for v3 alongside the extra epochs (10 -> 20); ball AP went +22% on the
   # test split vs v1, though the two changes weren't isolated so the gain can't
-  # be attributed to mixup alone. The augmentation keys below match what v3's checkpoint recorded.
+  # be attributed to mixup alone. The augmentation keys below match what v3's checkpoint recorded, except copy_paste.
   #
-  # copy_paste is NOT used: it requires per-instance segmentation masks
+  # copy_paste has no effect here (v3 and v6 were launched with 0.3, v1, v2, v7, v10 and v13 recorded 0; it is left at 0 below): it requires per-instance segmentation masks
   # (ultralytics no-ops it when instances only carry boxes - see
   # augment.py CopyPaste.__call__), and this dataset is bbox-only
   # (detection, not segmentation). Setting copy_paste > 0 here would do

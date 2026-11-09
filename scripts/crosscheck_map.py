@@ -6,7 +6,7 @@ through one code path. This script runs the reference implementation
 (Ultralytics val(), pycocotools-equivalent) on the same split and thresholds
 and prints a side-by-side diff, giving the custom evaluator an external witness.
 
-It's a check, not a gate: it always exits 0. Small gaps are expected - NMS
+It's a check, not a gate: it exits 0 whatever the gaps (2 only for missing inputs). Small gaps are expected - NMS
 tie-breaking, image- vs instance-level averaging, the `other` class (no instances on val). A
 gap above --tol on a populated class is what's worth a look.
 
@@ -168,9 +168,9 @@ def main() -> int:
             "yolo_val_rect": "default (true)" if args.rect is None else args.rect,
             "eval_map_report": _display_path(baseline_path),
             "per_class": rows,
-            "mean_eval_map_5class": base["overall"]["map50_95"], "mean_yolo_val": ref_map,
+            "mean_eval_map": base["overall"]["map50_95"], "mean_yolo_val": ref_map,
             "mean_eval_map_minus_yolo_val": base["overall"]["map50_95"] - ref_map,
-            "note": "eval_map's overall mean is over the classes it scored; YOLO.val's is over the populated classes",
+            "note": "means are over the classes that have instances in the split: 4 on val (no `other`), 5 on test",
         }, indent=2))
         print(f"[ok  ] wrote {_display_path(args.report)}")
     print(f"{'MEAN':<12}{base['overall']['map50_95']:>10.4f}{ref_map:>10.4f}{mean_gap:>9.4f}")

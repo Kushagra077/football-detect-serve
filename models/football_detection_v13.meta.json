@@ -1,6 +1,6 @@
 {
-  "weights": "/Users/kushagrapandya/Desktop/Football CV Optimization/football-detect-serve/models/football_detection_v13.pt",
-  "onnx": "/Users/kushagrapandya/Desktop/Football CV Optimization/football-detect-serve/models/football_detection_v13.onnx",
+  "weights": "models/football_detection_v13.pt",
+  "onnx": "models/football_detection_v13.onnx",
   "imgsz": 1280,
   "opset": 12,
   "dynamic_batch": true,

@@ -141,12 +141,12 @@ def curves() -> None:
                                            if d["epochs_done"] < d["planned_epochs"] else "")
         ax.plot(range(1, len(ys) + 1), ys, color=colors.get(v, "#888"), linewidth=2, label=label)
     ax.set_xlabel("epoch", color=TEXT)
-    ax.set_ylabel("validation mAP50-95 during training (5 classes)", color=TEXT)
+    ax.set_ylabel("validation mAP50-95 during training (4 classes with val instances)", color=TEXT)
     ax.set_title("Training curves: accuracy flattens after about 15 epochs", loc="left", fontsize=13, color=TEXT)
     ax.legend(frameon=False, fontsize=8, ncol=2)
     style(ax)
-    fig.text(0.01, 0.005, "Monitoring metric only; it counts the empty 'other' class, so it is not comparable "
-             "to the test numbers elsewhere.", fontsize=7.5, color="#777")
+    fig.text(0.01, 0.005, "Monitoring metric only (ultralytics' own val on the val split, mean over the four classes "
+             "that have instances there); not comparable to the test numbers elsewhere.", fontsize=7.5, color="#777")
     fig.tight_layout(rect=(0, 0.02, 1, 1))
     fig.savefig(FIG / "training_curves.png", dpi=150)
     plt.close(fig)

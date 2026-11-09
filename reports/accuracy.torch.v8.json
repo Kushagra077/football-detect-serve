@@ -1,6 +1,6 @@
 {
   "backend": "torch",
-  "weights": "/Users/kushagrapandya/Desktop/Football CV Optimization/football-detect-serve/models/football_detection_v8.pt",
+  "weights": "models/football_detection_v8.pt",
   "split": "val",
   "num_images": 8250,
   "conf": 0.001,

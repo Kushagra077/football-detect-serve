@@ -1,6 +1,6 @@
 {
   "backend": "onnx-fp32",
-  "weights": "/Users/kushagrapandya/Desktop/football-detect-serve/models/football_detection_v3.onnx",
+  "weights": "models/football_detection_v3.onnx",
   "split": "val",
   "num_images": 8250,
   "conf": 0.001,

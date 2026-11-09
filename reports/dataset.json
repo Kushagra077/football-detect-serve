@@ -1,5 +1,5 @@
 {
-  "data_yaml": "/Users/kushagrapandya/Desktop/football-detect-serve/dataset/data.yaml",
+  "data_yaml": "dataset/data.yaml",
   "classes": {
     "0": "ball",
     "1": "goalkeeper",

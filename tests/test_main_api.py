@@ -254,3 +254,22 @@ def test_predict_not_warm_returns_503(client):
         assert resp.status_code == 503
     finally:
         main_module.STATE["warm"] = True
+
+
+def test_batched_and_unbatched_metrics_use_the_registry_name_as_label(client):
+    """Presets share a runtime name (every ONNX fp32 preset is `onnx-fp32`), so queue/batch/inference metrics must be
+    labeled with the registry name (fast / balanced / ...), in both the batched and the ?batch=false path."""
+    from app import metrics as metrics_module
+
+    name = main_module.STATE["default"]
+    for batch in ("true", "false"):
+        resp = client.post("/predict", params={"batch": batch},
+                           files={"file": ("f.jpg", tiny_jpeg_bytes(), "image/jpeg")})
+        assert resp.status_code == 200
+
+    def labels(metric) -> set:
+        return {s.labels["backend"] for s in metric.collect()[0].samples if s.name.endswith("_count")}
+
+    assert name in labels(metrics_module.BATCH_SIZE)
+    assert name in labels(metrics_module.INFERENCE_LATENCY)
+    assert resp.json()["backend"] == "fake"  # the runtime name, not the registry name (documented in the schema)
