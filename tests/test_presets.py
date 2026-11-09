@@ -6,15 +6,31 @@ at the wrong input size (silently less accurate), so keep them in one test.
 """
 from __future__ import annotations
 
+import ast
 import json
 from pathlib import Path
 
 import pytest
 
-from app import gradio_app
 from app.main import _DEFAULT_MODELS, _parse_entries
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _gradio_constants() -> dict:
+    """Read the module-level constants of app/gradio_app.py without importing it.
+
+    The tests workflow installs no gradio/spaces/torch on purpose (see tests.yml), so importing the module fails there.
+    """
+    tree = ast.parse((ROOT / "app/gradio_app.py").read_text())
+    out = {}
+    for node in tree.body:
+        target = node.target if isinstance(node, ast.AnnAssign) else (node.targets[0] if isinstance(node, ast.Assign) else None)
+        if isinstance(target, ast.Name) and target.id in {"_MODELS", "_IMGSZ"}:
+            out[target.id] = ast.literal_eval(node.value)
+    return out
+
+
 EXPECTED = {  # preset -> (weights file, input size it was trained at)
     "fast": ("models/football_detection_v3.onnx", 640),
     "balanced": ("models/football_detection_v7.onnx", 960),
@@ -49,11 +65,12 @@ def test_dockerfile_copies_each_preset_and_its_sidecar(name):
 @pytest.mark.parametrize("name", list(EXPECTED))
 def test_gradio_lists_each_preset_at_its_training_size(name):
     path, imgsz = EXPECTED[name]
-    labels = [label for label, p in gradio_app._MODELS.items() if p == path]
+    consts = _gradio_constants()
+    labels = [label for label, p in consts["_MODELS"].items() if p == path]
     assert labels, f"{path} is not offered in the Gradio dropdown"
-    if imgsz != gradio_app.IMGSZ:  # entries at the default size need no override
+    if imgsz != 640:  # gradio_app.IMGSZ defaults to 640; entries at that size need no override
         for label in labels:
-            assert gradio_app._IMGSZ.get(label) == imgsz
+            assert consts["_IMGSZ"].get(label) == imgsz
 
 
 def _dockerignored(path: str) -> bool:
