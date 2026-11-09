@@ -170,7 +170,7 @@ def main() -> int:
             "per_class": rows,
             "mean_eval_map": base["overall"]["map50_95"], "mean_yolo_val": ref_map,
             "mean_eval_map_minus_yolo_val": base["overall"]["map50_95"] - ref_map,
-            "note": "means are over the classes that have instances in the split: 4 on val (no `other`), 5 on test",
+            "note": "means are over the classes that have instances in the split (val has none for `other`)",
         }, indent=2))
         print(f"[ok  ] wrote {_display_path(args.report)}")
     print(f"{'MEAN':<12}{base['overall']['map50_95']:>10.4f}{ref_map:>10.4f}{mean_gap:>9.4f}")

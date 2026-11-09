@@ -24,7 +24,7 @@ REQUEST_LATENCY = Histogram(
 # --- model level ---
 INFERENCE_LATENCY = Histogram(
     "fds_inference_latency_seconds",
-    "Time inside predict() (preprocess, inference, NMS), plus the wait for the backend lock on ?batch=false; excludes queueing.",
+    "Time inside predict() (preprocess, inference, NMS) including any wait for the backend lock; excludes queueing.",
     ["backend"],
     buckets=(0.002, 0.005, 0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 1.28),
     registry=REGISTRY,

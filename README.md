@@ -4,7 +4,7 @@
 
 Football object detection (ball / goalkeeper / player / referee, plus a minor `other`
 class) — YOLO26 trained
-on broadcast football footage, exported to ONNX, quantized to INT8 (measured, not shipped), and served behind a
+on broadcast football footage, exported to ONNX, quantized to INT8 (measured, not served), and served behind a
 batching FastAPI service with a live demo on Hugging Face Spaces.
 
 **[Live demo](https://huggingface.co/spaces/Kushagra77/football-detect-serve)** (Gradio,
@@ -46,12 +46,12 @@ mAP is the 4-class mean (ball / goalkeeper / player / referee) from `scripts/eva
 evaluator for every model. Latency is ONNX fp32 on CPU (Apple M2, 4 threads, 100 runs after 20 warm-up, real
 1080p dataset frames), measured by `scripts/benchmark.py` with each model at its own input size, all four in one
 session (`reports/latency.presets.json`). `max` is the val-selected v13 checkpoint; its ONNX file matches torch
-exactly on the full val split (`reports/accuracy.onnx.v13.fp32.json`).
+at every printed decimal on the full val split (largest per-class difference 4e-7) (`reports/accuracy.onnx.v13.fp32.json`).
 
 - **The first two steps (fast to balanced to accurate) each cost about twice the time and buy about +0.03 test
   mAP; the third (accurate to max) costs about three times as much for +0.018.** The ball gains the most in relative terms (0.111 to 0.178 across the first three, +61%; goalkeeper gains
   slightly more in absolute AP) but stays the weakest class at every size. *max* adds +0.018 test mAP over *accurate* (0.459 to 0.477) and lifts the ball
-  from 0.178 to 0.199. Its last checkpoint scores 0.490 on test with the same val score, so the gain over
+  from 0.178 to 0.199. Its last checkpoint scores 0.490 on test with a val score within 0.002, so the gain over
   *accurate* is +0.018 to +0.031, not one exact number.
 - **Same network, different input size, except `max`.** fast, balanced and accurate are YOLO26 nano (a 10 to 11 MB ONNX
   file each): v6 and v7 were trained at 1280 and 960, v3 at 640. *max* is YOLO26 small (v13, 9.95M parameters,
@@ -93,8 +93,9 @@ exactly on the full val split (`reports/accuracy.onnx.v13.fp32.json`).
   `reports/latency.other_models.json`), so v13 is a server-side candidate, not a laptop preset.
   Tiled inference (SAHI-style) was also tried on every 10th val frame with v7: the best tiled setup reached ball
   AP 0.154 against 0.173 for v6 on the whole frame (both on that 825-frame subset; v6's full-val ball AP is 0.185), at
-  about 4 times v7's latency (the setups tried cost 4 to 9 times). Tiling did lift v7's own ball AP (0.138 to 0.154) but
-  lowered its 4-class mean (0.492 to 0.478): `reports/tiling_experiment.val.json`.
+  about 4 times v7's latency (the setups tried cost 4 to 9 times). Pure tiling at 1280 lifted v7's own ball AP (0.138 to
+  0.154) but lowered its 4-class mean (0.492 to 0.478); adding ball-only tile boxes on top of the full frame raised the
+  mean slightly (0.498) without lifting the ball above 0.152: `reports/tiling_experiment.val.json`.
 
 ### Accuracy
 
@@ -107,7 +108,7 @@ Two evaluations, because the two splits don't mean the same thing:
   **optimistically**. Kept for training-time monitoring, not as a headline result.
 
 Model lineage: **v1 nano** and **v2 small** are 10-epoch baselines. **v3 nano** is the
-640 px nano behind the `fast` preset — 20 epochs, with `mixup=0.1` added specifically to help the rare, tiny ball
+640 px nano behind the `fast` preset — 20 epochs, with `mixup=0.1` added, aimed at the rare, tiny ball
 class. (`copy_paste` has no effect here: it requires per-instance segmentation masks, and this is
 a bbox-only detection dataset, so ultralytics silently no-ops it. v3 and v6 were nevertheless launched with the
 value 0.3 recorded in their checkpoints; it is left at 0 in `configs/train.yaml`.) v3 replaces v1; v1's numbers are kept as the
@@ -171,12 +172,13 @@ val-only: they measure export fidelity and quantization cost, not generalization
 files match torch to three decimals in every class (the export gate). Of the higher-resolution presets only v6 was INT8-quantized: it costs
 −0.046, more than v3's −0.033, and INT8 gave no speed gain on this CPU (timed on v3 only, see Latency), so the presets ship fp32.
 
-#### val vs test: the gap is leakage, and its shape confirms it
+#### val vs test: the gap is consistent with match-level leakage
 
 Like-for-like (4-class mean, `other` excluded): v3 drops 0.469 → 0.400 (**−15%**),
 v1 0.427 → 0.369 (−14%), v2 0.487 → 0.431 (−11%). The drop is concentrated in
 **goalkeeper and referee** (−0.09 to −0.13 each) while **player barely moves**
-(−0.02 to −0.04). That's the signature of match-level leakage, not random variance:
+(−0.02 to −0.04). That is the signature one would expect from match-level leakage, not random variance (on its own it cannot be told
+apart from plain domain shift to new stadiums and kits, which test also measures):
 players look the same in any match, but a keeper's kit and a ref's uniform are
 match-specific — memorizing them from training only helps on a val split that reuses
 those matches. `ball` goes the other way (slightly higher on test than on val for v1, v2 and v3), so it does not show the leakage
@@ -215,8 +217,9 @@ signature.
 runtime. **onnx-int8 is *slower* than fp32 on this hardware** (1.17x). My first guess was that Apple
 Silicon (ARM) lacks the x86-VNNI instructions onnxruntime's INT8 kernels are tuned for; the x86 run below
 shows that guess was wrong. FP16 was measured and dropped from this table: on CPU it ties
-fp32 on accuracy and is *slower* (onnxruntime has no native fp16 kernels on CPU, so it
-upcasts and pays the cast cost) — FP16 only helps on GPU, and this service targets CPU.
+fp32 on accuracy (`reports/accuracy.onnx.v1.fp16.json`) and was slower in the v1 evaluation (386 s against 344 s wall
+time; no latency report has an fp16 row). My explanation, not tested, is that onnxruntime has no native fp16 kernels on
+CPU, so it upcasts and pays the cast cost; FP16 should only help on GPU, and this service targets CPU.
 
 ### Latency (single-request, CPU, x86_64, 2 physical cores, batch=1, v3 nano)
 
@@ -259,8 +262,8 @@ its report). The ranking holds on a different CPU.
 
 - **Ratios.** Relative to fast at the median: balanced 2.0x, accurate 3.3x, max 10.6x (on the M2: 2.0x, 3.7x,
   10.9x). Max costs 3.2x of accurate for the same input size: the small model, not the resolution, is what makes
-  it slow. Fast, balanced and accurate have p99s well above their p50s (15.5, 46.8, 57.1 ms), a few slow runs on
-  the shared runner, so ratios of p99s mostly measure that noise.
+  it slow. Fast, balanced and accurate have p99s well above their p50s (15.5, 46.8, 57.1 ms), probably a few slow runs on
+  the shared runner (the report holds only percentiles), so ratios of p99s mostly measure that noise.
 - **Batching does not help here.** Throughput is flat or falling with batch size: fast 83.5 img/s at batch 1 and
   83.9 at batch 8, balanced 41.3 to 35.9, accurate 24.8 to 19.3. Max drops from 7.9 to 4.5 img/s at batch 8, and
   that run is erratic (min 1172 ms, p50 1985 ms, std 380 ms for the batch), so read it as "no gain, possibly a
@@ -279,8 +282,8 @@ full square (960x960 for balanced, 1280x1280 for accurate) while a real 16:9 fra
 M2 (timed by hand, not stored in `reports/`) the same noise costs 25.6 / 59.2 / 107 ms as a 640x640 square and 16.1 / 31.9 / 59.4 ms as a 1920x1080 frame
 (fast / balanced / accurate), so the square overstated latency by 1.6x to 1.9x there. On CI the fix lowered the
 medians of the second run by 24% to 34% (49.6 to 35.5, 110 to 84, 194 to 129 ms), a smaller drop than on the M2; runner variation
-is mixed into that, so one CI run cannot separate the two effects. The Apple M2 table above was timed on real
-dataset frames.
+is mixed into that, so one CI run cannot separate the two effects. The M2 presets table above was timed on real
+dataset frames (its report records `frames.source: dataset`).
 
 ### Load test: does batching help? (Locust, local Docker, v3 `onnx-fp32` = the `fast` preset, 1 min/run)
 
@@ -315,7 +318,7 @@ a request rarely finds a batch partner inside the 15 ms `MAX_WAIT_MS` window, so
 solo anyway (nobatch is faster at every percentile). At concurrency 4 the picture is the same for throughput and
 median (18.7 against 21.9 RPS, 240 against 170 ms) with p95 about equal (310 against 300 ms); batching shows the
 better p99 here (330 against 470 ms), a single-run difference I would not read as a win. At concurrency 16,
-batching wins outright: higher throughput (31.0 against 25.8 RPS) *and* lower latency at every percentile, because
+batching wins outright: higher throughput (31.0 against 25.8 RPS) *and* lower latency at every percentile, presumably because
 enough concurrent requests land inside the window to be grouped into one forward pass, which beats 16 single-image
 calls serializing behind the same lock. Zero request failures across all six runs.
 
@@ -387,9 +390,10 @@ Dockerfile, .dockerignore      the local serving image (four presets baked in)
 requirements.txt, pyproject.toml   plain-pip list vs local uv dev list (they differ on purpose; the Dockerfile and
                                tests.yml carry their own minimal pip lists)
 models/                        the four preset ONNX files + sidecars, v3 .pt / int8, download_weights.py
-reports/                       every number quoted in this README (see Reports)
+reports/                       nearly every number quoted in this README (the few hand-timed ones are marked)
 demo/                          the 20-second demo video
-.github/workflows/             tests.yml (pytest) and benchmark.yml (x86 latency; manual, or on pushes touching models/, scripts/benchmark.py or app/backends/)
+.github/workflows/             tests.yml (pytest) and benchmark.yml (x86 latency; manual, or on pushes to main touching models/football_detection_*,
+                               scripts/benchmark.py or app/backends/)
 tests/                         pytest suite (fake backend, no weights; see Testing)
 notebooks/                     dataset download, MOT -> YOLO conversion check, and a 1-epoch local smoke-test training run
                                (the real v1-v13 runs were Kaggle notebooks that are not in the repo)
@@ -460,6 +464,7 @@ python scripts/export_onnx.py --weights models/football_detection_v3.pt --quanti
     --data dataset/calib_data.yaml --split train --fraction 1.0
 python scripts/export_onnx.py --weights models/football_detection_v3.pt --quantize none
 
+# (the report names below are the committed, hand-renamed files; a fresh run writes accuracy.<backend>.<stem>.json)
 # 5. CHECK — onnx-fp32 should match torch to ~0.001 mAP per class; read the int8 drop and judge it.
 #    --compare-to prints the drop against a baseline report; no pass/fail threshold is set (add --max-map-drop <x>
 #    to gate on one, see configs/train.yaml's quantize: block for why none is published).

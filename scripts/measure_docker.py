@@ -42,10 +42,9 @@ def first_test_frame() -> Path:
 
 
 def one_request(url: str, frame: Path) -> tuple[float, dict]:
-    body = Path(tempfile.mkstemp(suffix=".json")[1])
-    out = sh("curl", "-sS", "-o", str(body), "-w", "%{time_total}", "-F", f"file=@{frame}", url)
-    payload = json.loads(body.read_text())
-    body.unlink()
+    with tempfile.NamedTemporaryFile(suffix=".json") as body:  # closed and deleted even if curl fails
+        out = sh("curl", "-sS", "-o", body.name, "-w", "%{time_total}", "-F", f"file=@{frame}", url)
+        payload = json.loads(Path(body.name).read_text())
     return float(out) * 1000, payload
 
 

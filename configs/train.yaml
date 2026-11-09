@@ -71,7 +71,7 @@ train:
   # test split vs v1, though the two changes weren't isolated so the gain can't
   # be attributed to mixup alone. The augmentation keys below match what v3's checkpoint recorded, except copy_paste.
   #
-  # copy_paste has no effect here (v3 and v6 were launched with 0.3, v1, v2, v7, v10 and v13 recorded 0; it is left at 0 below): it requires per-instance segmentation masks
+  # copy_paste has no effect here (v3 and v6 were launched with 0.3, every other run recorded 0; the key is simply not set below, so ultralytics uses 0): it requires per-instance segmentation masks
   # (ultralytics no-ops it when instances only carry boxes - see
   # augment.py CopyPaste.__call__), and this dataset is bbox-only
   # (detection, not segmentation). Setting copy_paste > 0 here would do

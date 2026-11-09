@@ -32,5 +32,5 @@
   "mean_eval_map": 0.46946936417079116,
   "mean_yolo_val": 0.4509195381739305,
   "mean_eval_map_minus_yolo_val": 0.01854982599686067,
-  "note": "means are over the classes that have instances in the split: 4 on val (no `other`), 5 on test"
+  "note": "means are over the classes that have instances in the split (val has none for `other`)"
 }

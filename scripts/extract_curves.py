@@ -23,9 +23,9 @@ KEY = "metrics/mAP50-95(B)"
 
 
 def main(argv: list[str]) -> int:
-    if not argv:
+    if not argv or argv[0] in ("-h", "--help"):
         print(__doc__)
-        return 2
+        return 0 if argv else 2
     data = json.loads(OUT.read_text()) if OUT.exists() else {}
     for item in argv:
         name, _, path = item.partition("=")
@@ -40,7 +40,7 @@ def main(argv: list[str]) -> int:
         }
         peak = max(range(len(curve)), key=curve.__getitem__) + 1
         print(f"[ok  ] {name}: {len(curve)} epochs, peak {curve[peak - 1]:.4f} at epoch {peak}")
-    OUT.write_text(json.dumps(dict(sorted(data.items(), key=lambda kv: int(kv[0][1:]))), indent=2))
+    OUT.write_text(json.dumps(dict(sorted(data.items(), key=lambda kv: (len(kv[0]), kv[0]))), indent=2))
     return 0
 
 
